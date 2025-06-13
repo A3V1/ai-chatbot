@@ -1,0 +1,539 @@
+# import os
+# from dotenv import load_dotenv
+
+# # Load environment variables
+# load_dotenv()
+
+# # Set Pinecone environment to match your actual index region
+# os.environ["PINECONE_ENVIRONMENT"] = "aped-4627-b74a"  # Set to your Pinecone environment/region
+
+# from langchain_huggingface import HuggingFaceEmbeddings
+# from langchain_pinecone import PineconeVectorStore
+# from langchain.schema import Document
+# from langchain.prompts import PromptTemplate
+# from langchain.chains import ConversationalRetrievalChain
+# from langchain.memory import ConversationBufferMemory
+# from langchain_openai import ChatOpenAI
+# from data_processing.mysql_connector import get_mysql_data
+
+# # # --- Prepare Document objects from MySQL data ---
+# def prepare_documents():
+#     mysql_data = get_mysql_data()
+#     # Adjust indices if your data is a tuple, not dict
+#     documents = [
+#         Document(
+#             page_content=row[25],  # full_text
+#             metadata={"policy_name": row[2]}  # policy_name
+#         )
+#         for row in mysql_data
+#     ]
+#     return documents
+
+# # --- Load Embeddings ---
+# embedding = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+
+# # --- Upload documents to Pinecone ---
+# def upload_to_pinecone(index_name):
+#     documents = prepare_documents()
+#     vectorstore = PineconeVectorStore.from_documents(
+#         documents=documents,
+#         embedding=embedding,
+#         index_name=index_name
+#     )
+#     return vectorstore
+
+# # --- Create Prompt Template ---
+# template = """
+# You are an insurance agent. These humans will ask you questions about their insurance.
+# Use the following piece of context to answer the question.
+# If you don't know the answer, just say you don't know.
+# Suggest the customer the right insurance policy according to their needs, giving enough information about it.
+# try to keep the answer concise and to the point. andd try to answer in 60 words or less.
+
+# Context: {context}
+# Question: {question}
+# Answer:
+# """
+
+# prompt = PromptTemplate(
+#     template=template,
+#     input_variables=["context", "question"]
+# )
+
+# # --- Define ChatBot class ---
+# class ChatBot:
+#     def __init__(self):
+#         self.vectorstore = upload_to_pinecone("insurance-chatbot")
+#         self.retriever = self.vectorstore.as_retriever()
+#         self.memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+#         self.chain = ConversationalRetrievalChain.from_llm(
+#             llm=ChatOpenAI(
+#                 model="mistralai/mistral-small",
+#                 openai_api_key=os.getenv("OPENAI_API_KEY"),
+#                 openai_api_base="https://openrouter.ai/api/v1",
+#                 temperature=0.8
+#             ),
+#             retriever=self.retriever,
+#             memory=self.memory,
+#             combine_docs_chain_kwargs={"prompt": prompt}
+#         )
+
+#     def ask(self, query):
+#         return self.chain.invoke({"question": query})
+
+# # --- Run the ChatBot session ---
+# if __name__ == "__main__":
+#     bot = ChatBot()
+#     # Debug: test retrieval
+#     docs = bot.retriever.get_relevant_documents("maternity benefits")
+#     print(f">>> Retrieved {len(docs)} documents")
+#     for doc in docs:
+#         print(doc.metadata["policy_name"], doc.page_content[:100])
+#     while True:
+#         user_input = input("Ask me anything about insurance: ")
+#         if user_input.lower() in ["exit", "quit"]:
+#             break
+#         result = bot.ask(user_input)
+#         print(result)
+
+
+
+
+
+
+
+#after uploading the documents to pinecone, you can run this code to test the chatbot
+
+# import os
+# from dotenv import load_dotenv
+
+# # Load environment variables
+# load_dotenv()
+
+# # Set Pinecone environment to match your actual index region
+# os.environ["PINECONE_ENVIRONMENT"] = "aped-4627-b74a"
+
+# from langchain_huggingface import HuggingFaceEmbeddings
+# from langchain_pinecone import PineconeVectorStore
+# from langchain.prompts import PromptTemplate
+# from langchain.chains import ConversationalRetrievalChain
+# from langchain.memory import ConversationBufferMemory,ConversationSummaryBufferMemory
+# from langchain_openai import ChatOpenAI
+
+# # --- Load Embeddings ---
+# embedding = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+
+# # --- Create Prompt Template ---
+# template = """
+# You are a helpful and concise virtual insurance advisor. Humans will ask about insurance policies. Use the conversation flow and context below to answer in **60 words or less**. If you don't know the answer, reply with "I don’t know."
+
+# Your goals:
+# - Ask follow-up questions according to the flow below to collect user needs.
+# - Recommend the most suitable policy type with a short explanation.
+# - Offer next actions clearly: Show brochure, Compare plans, Talk to human, or Buy now.
+
+# Use these conversation stages for context collection and recommendations:
+
+#  1. Basic Information
+# - What type of insurance are you looking for? (Store as: policy_type)
+# - What is your age? (age)
+# - Which city/state do you live in? (location)
+
+#  2. General Preferences
+# - Desired coverage amount? (coverage_amount)
+# - Maximum yearly premium budget? (premium_budget)
+# - Do you want a fixed sum assured? (sum_assured_preference)
+
+#  3. Policy-specific Questions (based on policy_type)
+# - Health: Ask about COVID-19 coverage, network hospitals, co-payments, pre-existing conditions, waiting period, add-ons, renewability, tax benefits.
+# - Term Life: Sum assured, term duration, maturity benefits, tax-saving, add-ons.
+# - Investment/ULIP: Market-linked returns, maturity benefit, lock-in, risk appetite, premium flexibility.
+# - Vehicle: Vehicle type, age, comprehensive or 3rd party, add-ons, fast claim preference.
+# - Home: Property value, natural disaster cover, ownership, belongings cover.
+
+# 4. Post-Recommendation Actions
+# After suggesting a plan, offer:
+# - "Would you like to see the brochure or full policy details?"
+# - "Would you like to compare this plan with another?"
+# - "Would you like to talk to a human advisor?"
+# - "Would you like to proceed with purchasing this policy?"
+
+# {context}
+
+# Customer: {question}
+
+# """
+
+# prompt = PromptTemplate(
+#     template=template,
+#     input_variables=["context", "question"]
+# )
+
+# # --- Define ChatBot class ---
+# class ChatBot:
+#     def __init__(self):
+#         self.vectorstore = PineconeVectorStore.from_existing_index(
+#             index_name="insurance-chatbot",
+#             embedding=embedding
+#         )
+#         self.retriever = self.vectorstore.as_retriever()
+#         self.memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+#         self.chain = ConversationalRetrievalChain.from_llm(
+#             llm=ChatOpenAI(
+#                 model="google/gemini-flash-1.5-8b",
+#                 openai_api_key=os.getenv("OPENAI_API_KEY"),
+#                 openai_api_base="https://openrouter.ai/api/v1",
+#                 temperature=0.8
+#             ),
+#             retriever=self.retriever,
+#             memory=self.memory,
+#             combine_docs_chain_kwargs={"prompt": prompt}
+#         )
+
+#     def ask(self, query):
+#         return self.chain.invoke({"question": query})
+
+# # --- Run the ChatBot session ---
+# if __name__ == "__main__":
+#     bot = ChatBot()
+
+#     # Debug test: verify retrieval
+#     # docs = bot.retriever.get_relevant_documents("maternity benefits")
+#     # print(f">>> Retrieved {len(docs)} documents")
+#     # for doc in docs:
+#     #     print(doc.metadata.get("policy_name", "N/A"), doc.page_content[:100])
+
+#     while True:
+#         user_input = input("User: ")
+#         if user_input.lower() in ["exit", "quit"]:
+#             break
+#         result = bot.ask(user_input)
+#         print(result)
+
+
+# import os
+# from dotenv import load_dotenv
+
+# # Load environment variables
+# load_dotenv()
+
+# # Set Pinecone environment to match your actual index region
+# os.environ["PINECONE_ENVIRONMENT"] = "aped-4627-b74a"
+
+# from langchain_huggingface import HuggingFaceEmbeddings
+# from langchain_pinecone import PineconeVectorStore
+# from langchain.prompts import PromptTemplate
+# from langchain.chains import ConversationalRetrievalChain
+# from langchain.memory import ConversationBufferMemory
+# from langchain_openai import ChatOpenAI
+
+# # --- Load Embeddings ---
+# embedding = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+
+# # --- Create Prompt Template ---
+# template = """
+# You are a concise virtual insurance advisor. Use retrieved context from the vector database to answer in 30 words or less.
+# when ansking questions from the user, always keep the questions under 15 words.
+#     take the user’s question and context, and provide a clear, concise answer. and at least 4 follow-up questions to gather more information.
+#     Ask clarifying questions if needed.
+
+#     Recommend a policy based on the user’s inputs and retrieved data.
+    
+#     dont add next steps in the answer.
+#     dont ask everything at once, ask one question at a time.
+#     Always suggest the most suitable policy type with a short explanation after gathering enough information.
+#     If you don’t know, say “I don’t know.”
+
+# {context}
+
+# Customer: {question}
+# """
+
+# prompt = PromptTemplate(
+#     template=template,
+#     input_variables=["context", "question"]
+# )
+
+# # --- Define ChatBot class ---
+# class ChatBot:
+#     def __init__(self):
+#         self.llm = ChatOpenAI(
+#             model="google/gemini-flash-1.5-8b",
+#             openai_api_key=os.getenv("OPENAI_API_KEY"),
+#             openai_api_base="https://openrouter.ai/api/v1",
+#             temperature=0.8
+#         )
+
+#         self.vectorstore = PineconeVectorStore.from_existing_index(
+#             index_name="insurance-chatbot",
+#             embedding=embedding
+#         )
+
+#         self.retriever = self.vectorstore.as_retriever()
+
+#         self.memory = ConversationBufferMemory(
+#             memory_key="chat_history",
+#             return_messages=True
+#         )
+
+#         self.chain = ConversationalRetrievalChain.from_llm(
+#             llm=self.llm,
+#             retriever=self.retriever,
+#             memory=self.memory,
+#             combine_docs_chain_kwargs={"prompt": prompt}
+#         )
+
+#     def ask(self, query):
+#         return self.chain.invoke({"question": query})
+
+# # --- Run the ChatBot session ---
+# if __name__ == "__main__":
+#     bot = ChatBot()
+
+#     while True:
+#         user_input = input("User: ")
+#         if user_input.lower() in ["exit", "quit"]:
+#             break
+#         result = bot.ask(user_input)
+#         print(result["answer"])
+
+
+
+
+
+
+
+
+
+
+
+import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+# Set Pinecone environment
+os.environ["PINECONE_ENVIRONMENT"] = "aped-4627-b74a"
+
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_pinecone import PineconeVectorStore
+from langchain.prompts import PromptTemplate
+from langchain.chains import ConversationalRetrievalChain, RetrievalQA
+from langchain.memory import ConversationBufferMemory
+from langchain_openai import ChatOpenAI
+
+# Load Embedding Model
+embedding = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+
+# Custom Prompt Template for Insurance Advisor
+insurance_template = """
+You are a concise, data-driven insurance advisor. Your role is to recommend policies based STRICTLY on retrieved context and user inputs.
+Core Rules
+
+Context-Only Responses: Answer only from provided context. If information is missing, state "I need more details" or "This isn't covered in my current information."
+Concise Communication: Keep responses under 25 words
+Single Question Focus: Ask only 1 targeted follow-up (max 12 words)
+No Assumptions: Never fill gaps with general insurance knowledge
+Minimum Information Threshold: Ask at least 4 questions before making any recommendation
+Complete Reset: If user switches insurance types mid-conversation, restart from step 1
+
+Conversation Flow
+1. Insurance Type Identification
+First, determine: Health Insurance | Term Life Insurance | Vehicle Insurance | ULIPs & Investment Plans | Home Insurance | Personal Accident Insurance | Critical Illness Insurance
+2. Progressive Information Gathering (Minimum 4 Questions Required)
+Collect relevant details in this order of priority:
+Universal Requirements:
+
+Age and location
+Monthly budget range
+
+Type-Specific Essentials:
+
+Health Insurance: Pre-existing conditions, family medical history
+Term Life Insurance: Dependents, current coverage, financial obligations
+ULIPs & Investment Plans: Risk tolerance, investment timeline, current savings
+Vehicle Insurance: Vehicle type/age, driving record, usage frequency
+Home Insurance: Property type/value, location risk factors
+Personal Accident Insurance: Occupation, activity level, coverage needs
+Critical Illness Insurance: Family medical history, current health status
+
+3. Recommendation Protocol
+DO NOT RECOMMEND until you have asked at least 4 relevant questions and gathered sufficient context.
+When adequate information exists:
+
+State the recommended policy name/type
+Cite specific context data (premium, coverage limits, eligibility)
+Explain fit in 8-10 words: "Best match because [specific reason from your context data]"
+
+{context}
+
+Customer: {question}
+"""
+
+# Simple QA Prompt Template
+qa_template = """Use the following pieces of context to answer the question at the end. 
+If you don't know the answer, just say that you don't know, don't try to make up an answer.
+Please number each point in your answer when listing multiple items.
+
+{context}
+
+Question: {question}
+Answer:"""
+
+insurance_prompt = PromptTemplate(
+    input_variables=["context", "question"],
+    template=insurance_template
+)
+
+qa_prompt = PromptTemplate(
+    template=qa_template,
+    input_variables=["context", "question"]
+)
+
+# ChatBot Class
+class ChatBot:
+    def __init__(self):
+        self.llm = ChatOpenAI(
+            model="google/gemini-flash-1.5-8b",
+            openai_api_key=os.getenv("OPENAI_API_KEY"),
+            openai_api_base="https://openrouter.ai/api/v1",
+            temperature=0.8
+        )
+
+        # Alternative LLM for simple QA (lower temperature for focused responses)
+        self.qa_llm = ChatOpenAI(
+            model="google/gemini-flash-1.5-8b",
+            openai_api_key=os.getenv("OPENAI_API_KEY"),
+            openai_api_base="https://openrouter.ai/api/v1",
+            temperature=0,
+            verbose=True
+        )
+
+        self.vectorstore = PineconeVectorStore.from_existing_index(
+            index_name="insurance-chatbot",
+            embedding=embedding
+        )
+
+        self.memory = ConversationBufferMemory(
+            memory_key="chat_history",
+            return_messages=True
+        )
+
+        # Original conversational chain for insurance advisory
+        self.conversational_chain = ConversationalRetrievalChain.from_llm(
+            llm=self.llm,
+            retriever=self.vectorstore.as_retriever(),
+            memory=self.memory,
+            combine_docs_chain_kwargs={"prompt": insurance_prompt}
+        )
+
+        # Simple RetrievalQA chain for direct questions
+        self.qa_chain = RetrievalQA.from_chain_type(
+            llm=self.qa_llm,
+            chain_type="stuff",
+            retriever=self.vectorstore.as_retriever(),
+            chain_type_kwargs={"prompt": qa_prompt}
+        )
+
+    def ask_conversational(self, query: str) -> str:
+        """Use conversational chain for insurance advisory"""
+        try:
+            result = self.conversational_chain.invoke({"question": query})
+            return result["answer"]
+        except Exception as e:
+            return f"Error: {str(e)}"
+
+    def ask_simple(self, query: str) -> str:
+        """Use simple RetrievalQA for direct questions"""
+        try:
+            result = self.qa_chain.invoke({"query": query})
+            return result["result"]
+        except Exception as e:
+            return f"Error: {str(e)}"
+
+    def ask(self, query: str, mode: str = "conversational") -> str:
+        """
+        Ask a question using specified mode
+        mode: 'conversational' for insurance advisory or 'simple' for direct QA
+        """
+        if mode == "simple":
+            return self.ask_simple(query)
+        else:
+            return self.ask_conversational(query)
+
+# Example usage functions
+def demo_simple_qa():
+    """Demonstrate simple RetrievalQA functionality"""
+    bot = ChatBot()
+    
+    print("=== Simple RetrievalQA Demo ===")
+    
+    # Example queries for simple QA
+    queries = [
+        "What are the types of insurance policies available? Please number each type.",
+        "What are the benefits of health insurance according to the documents?",
+        "Can you list the eligibility criteria for term life insurance?"
+    ]
+    
+    for query in queries:
+        print(f"\nQuery: {query}")
+        response = bot.ask(query, mode="simple")
+        print(f"Response: {response}")
+        print("-" * 50)
+
+def demo_conversational():
+    """Demonstrate conversational insurance advisory"""
+    bot = ChatBot()
+    
+    print("=== Conversational Insurance Advisory Demo ===")
+    
+    queries = [
+        "I need insurance advice",
+        "I'm 25 years old",
+        "My budget is 5000 per month",
+        "I want health insurance"
+    ]
+    
+    for query in queries:
+        print(f"\nUser: {query}")
+        response = bot.ask(query, mode="conversational")
+        print(f"Bot: {response}")
+        print("-" * 30)
+
+# Run the chatbot with mode selection
+if __name__ == "__main__":
+    bot = ChatBot()
+    print("🟩 Virtual Insurance Chatbot is running.")
+    print("Commands:")
+    print("- Type 'mode simple' for direct Q&A")
+    print("- Type 'mode conversational' for insurance advisory")
+    print("- Type 'demo simple' for simple QA demo")
+    print("- Type 'demo conversational' for advisory demo")
+    print("- Type 'exit' to quit")
+    
+    current_mode = "conversational"
+    
+    while True:
+        user_input = input(f"\nUser ({current_mode}): ")
+        
+        if user_input.lower() in ["exit", "quit"]:
+            print("👋 Goodbye!")
+            break
+        elif user_input.lower() == "mode simple":
+            current_mode = "simple"
+            print("Switched to simple Q&A mode")
+            continue
+        elif user_input.lower() == "mode conversational":
+            current_mode = "conversational"
+            print("Switched to conversational advisory mode")
+            continue
+        elif user_input.lower() == "demo simple":
+            demo_simple_qa()
+            continue
+        elif user_input.lower() == "demo conversational":
+            demo_conversational()
+            continue
+        
+        response = bot.ask(user_input, mode=current_mode)
+        print("Bot:", response)

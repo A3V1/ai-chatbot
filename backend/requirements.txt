@@ -1,0 +1,9 @@
+pinecone
+sentence-transformers
+pymysql
+python-dotenv
+langchain
+langchain-pinecone
+langchain-openai
+langchain-community
+mysql-connector-python

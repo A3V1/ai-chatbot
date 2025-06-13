@@ -1,0 +1,300 @@
+body {
+  font-family: Arial, sans-serif;
+  margin: 0;
+  padding: 0;
+  background-color: #f0f0f0;
+  color: #333;
+}
+
+.App {
+  text-align: center;
+  padding: 20px;
+}
+
+/* Header Styles */
+header {
+  background-color: rgba(0, 51, 102, 0.9); /* Deep blue with transparency */
+  color: white;
+  padding: 1rem 0;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 2rem;
+}
+
+.logo {
+  font-size: 1.5rem;
+  font-weight: bold;
+}
+
+nav ul {
+  list-style: none;
+  display: flex;
+}
+
+nav ul li {
+  margin-left: 1rem;
+}
+
+nav ul li a {
+  color: white;
+  text-decoration: none;
+  transition: color 0.3s ease;
+}
+
+nav ul li a:hover {
+  color: #f0f0f0;
+}
+
+/* Hero Section Styles */
+.hero {
+  display: flex;
+  background-image: url('https://as1.ftcdn.net/jpg/03/00/14/84/1000_F_300148429_zxZonHujEMCx23kbM3aUxKQwFj5HDgf2.webp'); /* Professional agent image */
+  background-color: #f4f1ed; /* Alice Blue */
+  background-blend-mode: multiply;
+  background-clip: content-box;
+  background-repeat: no-repeat;
+  opacity: 1px;
+  border-radius: 15px;
+  margin: 2rem;
+  overflow: hidden;
+  background-size: cover;
+  background-position: center;
+}
+
+.hero-content {
+  display: flex;
+  width: 250%;
+}
+
+.hero-text {
+  width: 400%;
+  padding: 4rem 2rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+.hero h1 {
+  font-size: 3.5rem;
+  color: #0662be;
+  margin-bottom: 1rem;
+  letter-spacing: 0.1rem;
+}
+
+.hero p {
+  font-size: 1.4rem;
+  color: #555;
+  margin-bottom: 2rem;
+}
+
+/* .hero button {
+  background-color: #007bff;  Blue 
+  color: white;
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 1.1rem;
+} */
+
+.play-button {
+  font-size: 2rem;
+  color: #007bff;
+  cursor: pointer;
+}
+
+.avatar {
+  background-color: #007bff; /* Blue */
+  color: white;
+  padding: 0.5rem;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 4rem;
+  /* box-shadow: 0 0 10px rgba(0, 123, 255, 0.5); Light glow effect */
+}
+
+.hero-image {
+  width: 2%;
+  background: linear-gradient(to bottom, #f0f0f0, #e0e0e0); /* Placeholder image */
+}
+
+.tagline {
+  background-color: white;
+  text-align: center;
+  padding: 2rem;
+  font-size: 1.2rem;
+  color: #555;
+}
+
+/* Features Section Styles */
+.features {
+  display: flex;
+  justify-content: space-around;
+  padding: 2rem;
+  margin: 0 2rem;
+  background-color: #f8f8ff; /* GhostWhite */
+}
+
+.feature-card {
+  background-color: white;
+  border-radius: 15px;
+  padding: 1.5rem;
+  text-align: center;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05); /* Light shadow */
+  margin: 1rem;
+}
+
+.feature-card span {
+  font-size: 2rem;
+  color: #007bff;
+}
+
+.feature-card h3 {
+  color: #003366;
+}
+
+.feature-card p {
+  color: #555;
+}
+
+/* How It Works Styles */
+.how-it-works {
+  display: flex;
+  justify-content: space-around;
+  padding: 2rem;
+  background-color: #f9f9f9;
+}
+
+.how-it-works .step {
+  text-align: center;
+}
+
+.how-it-works h3 {
+  color: #003366;
+}
+
+.how-it-works p {
+  color: #555;
+}
+
+/* Chat Widget Styles */
+.chat-widget {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 1000;
+}
+
+.chat-button {
+  background-color: #007bff;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 60px;
+  height: 60px;
+  font-size: 2rem;
+  cursor: pointer;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+  transition: background-color 0.3s ease;
+}
+
+.chat-button:hover {
+  background-color: #0056b3;
+}
+
+/* .chat-button {
+  background-color: #007bff;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 60px;
+  height: 60px;
+  font-size: 2rem;
+  cursor: pointer;
+} */
+
+.chat-window {
+  width: 300px;
+  background-color: white;
+  border-radius: 100px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+}
+
+.chat-header {
+  background-color: #2356cd; /* Purple */
+  color: white;
+  padding: 0.5rem;
+  text-align: center;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.close-button {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 0;
+}
+
+.chat-window {
+  width: 400px;
+  height: 500px;
+  background-color: white;
+  border-radius: 10px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+}
+
+.chat-body {
+  padding: 1rem;
+}
+
+.chat-footer {
+  display: flex;
+  padding: 0.5rem;
+}
+
+.chat-footer input {
+  flex: 1;
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+}
+
+.chat-footer button {
+  background-color: #007bff;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  margin-left: 0.5rem;
+}
+
+.cta-button {
+  background-color: #007bff;
+  color: white;
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 1.1rem;
+  transition: background-color 0.3s ease;
+}
+
+.cta-button:hover {
+  background-color: #0056b3;
+}
