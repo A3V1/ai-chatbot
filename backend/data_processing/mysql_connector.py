@@ -21,3 +21,15 @@ def get_mysql_data(
     cursor.close()
     conn.close()
     return data
+
+def get_mysql_connection(
+    host=None, user=None, password=None, database=None
+):
+    host = host or os.getenv("MYSQL_HOST", "localhost")
+    user = user or os.getenv("MYSQL_USER", "root")
+    password = password or os.getenv("MYSQL_PASSWORD", "password")
+    database = database or os.getenv("MYSQL_DATABASE", "insurance_bot")
+    conn = mysql.connector.connect(
+        host=host, user=user, password=password, database=database
+    )
+    return conn

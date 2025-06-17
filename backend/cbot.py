@@ -1,158 +1,3 @@
-# import os
-# from dotenv import load_dotenv
-# import datetime
-
-
-# # Load environment variables
-# load_dotenv()
-
-# # Set Pinecone environment to match your actual index region
-# os.environ["PINECONE_ENVIRONMENT"] = "aped-4627-b74a"  # Set to your Pinecone environment/region
-
-# from langchain_huggingface import HuggingFaceEmbeddings
-# from langchain_pinecone import PineconeVectorStore
-# from langchain.schema import Document
-# from langchain.prompts import PromptTemplate
-# from langchain.chains import ConversationalRetrievalChain
-# from langchain.memory import ConversationBufferMemory
-# from langchain_openai import ChatOpenAI
-# from data_processing.mysql_connector import get_mysql_data
-
-# def sanitize_metadata(metadata: dict) -> dict:
-#     sanitized = {}
-#     for key, value in metadata.items():
-#         if value is None:
-#             continue
-#         if isinstance(value, (str, int, float, bool)):
-#             sanitized[key] = value
-#         elif isinstance(value, datetime.datetime):
-#             sanitized[key] = value.isoformat()
-#         elif isinstance(value, datetime.date):
-#             sanitized[key] = value.strftime("%Y-%m-%d")
-#         else:
-#             # Skip complex types or convert to string if desired
-#             sanitized[key] = str(value)
-#     return sanitized
-
-# # # --- Prepare Document objects from MySQL data ---
-# def prepare_documents():
-#     mysql_data = get_mysql_data()
-#     documents = []
-#     for row in mysql_data:
-#         metadata = {
-#             "id": row[0],
-#             "insurer_name": row[1],
-#             "policy_name": row[2],
-#             "policy_type": row[3],
-#             "premium": row[4],
-#             "coverage_amount": row[5],
-#             "sum_assured": row[6],
-#             "co_payment": row[7],
-#             "network_hospitals": row[8],
-#             "waiting_period": row[9],
-#             "maturity_benefits": row[10],
-#             "return_on_maturity": row[11],
-#             "entry_age_min": row[12],
-#             "entry_age_max": row[13],
-#             "policy_term_min": row[14],
-#             "policy_term_max": row[15],
-#             "renewability": row[16],
-#             "claim_process": row[17],
-#             "tax_benefits": row[18],
-#             "eligibility": row[19],
-#             "features": row[20],
-#             "exclusions": row[21],
-#             "add_ons_available": row[22],
-#             "grace_period": row[23],
-#             "free_look_period": row[24],
-#             "policy_brochure_url": row[26],
-#             "premium_payment_modes": row[27],
-#             "policy_status": row[28],
-#             "customer_rating": row[29],
-#             "contact_support": row[30],
-#             "covid19_coverage": row[31],
-#             "policy_tags": row[32],
-#             "created_at": row[33],
-#             "last_updated": row[34]
-#         }
-
-#         sanitized_meta = sanitize_metadata(metadata)
-#         documents.append(Document(page_content=row[25], metadata=sanitized_meta))
-#     return documents
-
-# # --- Load Embeddings ---
-# embedding = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
-
-# # --- Upload documents to Pinecone ---
-# def upload_to_pinecone(index_name):
-#     documents = prepare_documents()
-#     vectorstore = PineconeVectorStore.from_documents(
-#         documents=documents,
-#         embedding=embedding,
-#         index_name=index_name
-#     )
-#     return vectorstore
-
-# # --- Create Prompt Template ---
-# template = """
-# You are an insurance agent. These humans will ask you questions about their insurance.
-# Use the following piece of context to answer the question.
-# If you don't know the answer, just say you don't know.
-# Suggest the customer the right insurance policy according to their needs, giving enough information about it.
-# try to keep the answer concise and to the point. andd try to answer in 60 words or less.
-
-# Context: {context}
-# Question: {question}
-# Answer:
-# """
-
-# prompt = PromptTemplate(
-#     template=template,
-#     input_variables=["context", "question"]
-# )
-
-# # --- Define ChatBot class ---
-# class ChatBot:
-#     def __init__(self):
-#         self.vectorstore = upload_to_pinecone("insurance-chatbot")
-#         self.retriever = self.vectorstore.as_retriever()
-#         self.memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
-#         self.chain = ConversationalRetrievalChain.from_llm(
-#             llm=ChatOpenAI(
-#                 model="mistralai/mistral-small",
-#                 openai_api_key=os.getenv("OPENAI_API_KEY"),
-#                 openai_api_base="https://openrouter.ai/api/v1",
-#                 temperature=0.8
-#             ),
-#             retriever=self.retriever,
-#             memory=self.memory,
-#             combine_docs_chain_kwargs={"prompt": prompt}
-#         )
-
-#     def ask(self, query):
-#         return self.chain.invoke({"question": query})
-
-# # --- Run the ChatBot session ---
-# if __name__ == "__main__":
-#     bot = ChatBot()
-#     # Debug: test retrieval
-#     docs = bot.retriever.get_relevant_documents("maternity benefits")
-#     print(f">>> Retrieved {len(docs)} documents")
-#     for doc in docs:
-#         print(doc.metadata["policy_name"], doc.page_content[:100])
-#     while True:
-#         user_input = input("Ask me anything about insurance: ")
-#         if user_input.lower() in ["exit", "quit"]:
-#             break
-#         result = bot.ask(user_input)
-#         print(result)
-
-
-
-
-
-
-
 import os
 from dotenv import load_dotenv
 
@@ -162,99 +7,119 @@ from langchain_openai import ChatOpenAI
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_pinecone import PineconeVectorStore
 
-# Load environment variables
+from data_processing.user_context import get_user_context, load_user_data, get_user_info, save_user_data
+from jinja2 import Template
+from data_processing.mysql_connector import get_mysql_connection
+
+# Load env vars
 load_dotenv()
 os.environ["PINECONE_ENVIRONMENT"] = "aped-4627-b74a"
 
 # Load Embeddings
 embedding = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 
-# Prompt Template
-template = """
-You are a helpful and concise virtual insurance advisor. Humans will ask about insurance policies. Use the conversation flow and context below to answer in **60 words or less**. If you don't know the answer, reply with "I don’t know."
+raw_template = """
+You are an expert insurance advisor chatbot helping users choose and apply for the best insurance policies.
 
-Your goals:
-- Ask follow-up questions according to the flow below to collect user needs.
-- Recommend the most suitable policy type with a short explanation.
-- Offer next actions clearly: Show brochure, Compare plans, Talk to human, or Buy now.
+🎯 GOALS:
+- Recommend policies based on user profile and context.
+- Answer follow-up questions (e.g. claims, exclusions, brochure).
+- Guide user through: Recommendation → More Info → Application → Payment.
+- Keep each message < 40 words unless clarification is required.
 
-Use these conversation stages for context collection and recommendations:
+📚 KNOWLEDGE BASE CONTEXT:
+{{ retrieved_context }}
 
- 1. Basic Information
-- What type of insurance are you looking for? (Store as: policy_type)
-- What is your age? (age)
-- Which city/state do you live in? (location)
+👤 USER PROFILE:
+- Phone: {{ phone_number }}
+- Interested Policy Type: {{ interested_policy_type or "Not specified" }}
+- Age: {{ age or "Not specified" }}
+- Coverage Needed: {{ desired_coverage or "Not specified" }}
+- Budget: {{ premium_budget or "Not specified" }}
+- Payment Mode: {{ premium_payment_mode or "Not specified" }}
+- Add-ons Wanted: {{ preferred_add_ons or "None specified" }}
+- Dependents: {{ has_dependents or "Not specified" }}
+- Policy Duration: {{ policy_duration_years or "Not specified" }}
+- Insurance Experience: {{ insurance_experience_level or "Not specified" }}
 
- 2. General Preferences
-- Desired coverage amount? (coverage_amount)
-- Maximum yearly premium budget? (premium_budget)
-- Do you want a fixed sum assured? (sum_assured_preference)
+🗣 CHAT HISTORY:
+{{ chat_history }}
 
- 3. Policy-specific Questions (based on policy_type)
-- Health: Ask about COVID-19 coverage, network hospitals, co-payments, pre-existing conditions, waiting period, add-ons, renewability, tax benefits.
-- Term Life: Sum assured, term duration, maturity benefits, tax-saving, add-ons.
-- Investment/ULIP: Market-linked returns, maturity benefit, lock-in, risk appetite, premium flexibility.
-- Vehicle: Vehicle type, age, comprehensive or 3rd party, add-ons, fast claim preference.
-- Home: Property value, natural disaster cover, ownership, belongings cover.
+❓ USER QUESTION:
+{{ question }}
 
-4. Post-Recommendation Actions
-After suggesting a plan, offer:
-- "Would you like to see the brochure or full policy details?"
-- "Would you like to compare this plan with another?"
-- "Would you like to proceed with purchasing this policy?"
+---
 
-5.At least ask 3 questions before making a recommendation. If the user provides all necessary information, you can skip to the recommendation.
+💡 RESPONSE RULES:
 
-6. if the user asks about a specific policy, provide a brief summary and ask if they want to see the brochure or compare it with others.
+1. **Understand the user's intent** from current question + profile + history.
 
-7.if the user wants to proceed with a purchase, exit the conversation and provide a confirmation message.
+2. **If recommending a policy**, consider:
+   - Match based on age, dependents, budget, and interest
+   - Include: policy name, premium, sum assured, and one key feature
+   - Example: “FamilyCare Premium covers ₹15L, ₹21,400/year. Great for families. Want to see brochure?”
 
-Context:
-{context}
+3. **If user asks for a brochure**, respond:
+   - “Here’s the brochure: {{ policy_brochure_url }}”
 
-Chat History:
-{chat_history}
+4. **If asked about claim process**, respond:
+   - “Claims are processed via {{ claim_process }}. Want to know about exclusions or benefits?”
 
-User: {question}
+5. **If asked about exclusions**, use:
+   - “Exclusions include: {{ exclusions }}. Want to proceed or compare policies?”
 
-Response:
+6. **If interested in applying**, respond:
+   - “I can help start your application. Shall we proceed with your details?”
+
+7. **If user says yes to application**, say:
+   - “Starting your application. You’ll get a confirmation shortly. Do you want to make payment now?”
+
+8. **If user wants to pay**, respond:
+   - “Redirecting to secure payment portal. Anything else you’d like help with?”
+
+if user asks about payment, say: to type yes or no to proceed with payment.
+---
+
+📝 RESPONSE:
+
 """
 
-prompt = PromptTemplate(
-    input_variables=["context", "chat_history", "question"],
-    template=template
-)
 
 class ChatBot:
-    def __init__(self):
+    def __init__(self, phone_number: str):
+        self.phone_number = phone_number
         self.llm = ChatOpenAI(
             model="google/gemini-2.0-flash-lite-001",
             openai_api_key=os.getenv("OPENAI_API_KEY"),
             openai_api_base="https://openrouter.ai/api/v1",
             temperature=0.8
         )
-
         self.vectorstore = PineconeVectorStore.from_existing_index(
             index_name="insurance-chatbot",
             embedding=embedding
         )
-
         self.retriever = self.vectorstore.as_retriever()
+        self.memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
 
-        self.memory = ConversationBufferMemory(
-            memory_key="chat_history",
-            return_messages=True
-        )
+        context, chat_history = load_user_data(phone_number)
+        self.user_context = context
+        chat_history = chat_history or []
+        for msg in chat_history:
+            if msg.get("type") == "human":
+                self.memory.chat_memory.add_user_message(msg["content"])
+            elif msg.get("type") == "ai":
+                self.memory.chat_memory.add_ai_message(msg["content"])
 
-    def ask(self, query, filter=None):
-        # Use similarity search directly on vectorstore
-        if filter is None:
-            docs = self.vectorstore.similarity_search(query, k=4)
-        else:
-            docs = self.vectorstore.similarity_search(query, k=4, filter=filter)
-        context = "\n\n".join([doc.page_content for doc in docs])
+        self.user_info = get_user_info(phone_number)
 
-        # Build chat history as string
+    def ask(self, query: str):
+        user_context = get_user_context(self.phone_number) or self.user_context or {}
+        user_info = self.user_info or get_user_info(self.phone_number) or {}
+
+        # Retrieve relevant documents and extract their content
+        retrieved_docs = self.vectorstore.similarity_search(query, k=6)
+        retrieved_context = "\n---\n".join([doc.page_content for doc in retrieved_docs])
+
         chat_history_str = ""
         for msg in self.memory.chat_memory.messages:
             if msg.type == "human":
@@ -262,26 +127,89 @@ class ChatBot:
             elif msg.type == "ai":
                 chat_history_str += f"Bot: {msg.content}\n"
 
-        # Create the full prompt using the PromptTemplate directly
-        formatted_prompt = prompt.format(
-            context=context,
-            chat_history=chat_history_str,
-            question=query
-        )
+        merged_context = {
+            **user_context,
+            **user_info,
+            "chat_history": chat_history_str,
+            "question": query,
+            "retrieved_context": retrieved_context  # Add retrieved context here
+        }
 
-        # Run the LLM on that prompt
-        response = self.llm.invoke(formatted_prompt)
-
-        # Update memory manually
+        prompt_template = Template(raw_template)
+        full_prompt = prompt_template.render(**merged_context)
+        response = self.llm.invoke(full_prompt)
         self.memory.chat_memory.add_user_message(query)
         self.memory.chat_memory.add_ai_message(response.content)
 
+        # 🔄 SMART CONTEXTUAL SUMMARY GENERATION
+        summary_prompt = f"""
+        In 2 plain sentence, summarize what the user is seeking help with in this chat. Do not include any formatting or instructions.
+Chat Transcript:
+{chat_history_str}
+        """
+        summary_response = self.llm.invoke(summary_prompt)
+        context_summary = summary_response.content.strip()
+        if context_summary and len(context_summary.split()) > 5:
+            save_user_data(self.phone_number, context_summary)
+
         return response.content
 
-if __name__ == "__cbot__":
-    bot = ChatBot()
+
+def get_missing_user_info_fields(user_info: dict) -> list:
+    required_fields = [
+        ("interested_policy_type", "What type of insurance are you interested in (Term Life, Health, Investment, etc.)?"),
+        ("age", "What’s your age?"),
+        ("desired_coverage", "What is the coverage amount you are looking for?"),
+        ("premium_budget", "What is your budget for annual premium?"),
+        ("premium_payment_mode", "How would you prefer to pay premiums (Annually, Semi-Annually, Monthly)?"),
+        ("preferred_add_ons", "Are there any benefits you want (like accidental death cover, waiver of premium, etc.)?"),
+        ("has_dependents", "Do you have any dependents (e.g., spouse, children, parents)? (yes/no)"),
+        ("policy_duration_years", "How long would you like the policy coverage to last (in years)?"),
+        ("insurance_experience_level", "Have you purchased insurance before? (Beginner, Intermediate, Experienced)"),
+    ]
+    return [(field, question) for field, question in required_fields if user_info.get(field) in [None, "", "null"]]
+
+
+def update_user_info(phone_number: str, field: str, value):
+    conn = get_mysql_connection()
+    cursor = conn.cursor()
+    cursor.execute(f"UPDATE user_info SET {field} = %s WHERE phone_number = %s", (value, phone_number))
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+
+if __name__ == "__main__":
+    phone_number = input("Enter your phone number: ").strip()
+    if not phone_number:
+        print("Phone number is required to start the chat.")
+        exit(1)
+
+    user_info = get_user_info(phone_number)
+    if not user_info:
+        print("Creating new user entry...")
+        conn = get_mysql_connection()
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO user_info (phone_number) VALUES (%s)", (phone_number,))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        user_info = get_user_info(phone_number)
+
     while True:
-        user_input = input("User: ")
+        missing_fields = get_missing_user_info_fields(user_info)
+        if not missing_fields:
+            break
+        for field, question in missing_fields:
+            value = input(question + " ").strip()
+            if value.lower() in ["exit", "quit"]:
+                exit(0)
+            update_user_info(phone_number, field, value)
+        user_info = get_user_info(phone_number)
+
+    bot = ChatBot(phone_number)
+    while True:
+        user_input = input("User: ").strip()
         if user_input.lower() in ["exit", "quit"]:
             break
         response = bot.ask(user_input)
