@@ -2,9 +2,10 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Any
 from cbot import ChatBot, get_missing_user_info_fields, update_user_info, get_user_info
 from data_processing.mysql_connector import get_mysql_connection
+from payments import router as payments_router
 
 app = FastAPI()
 
@@ -26,6 +27,9 @@ class MessageRequest(BaseModel):
 class MessageResponse(BaseModel):
     response: str
     missing_fields: Optional[List[Dict[str, str]]] = None
+    action: Optional[str] = None
+    plan: Optional[str] = None
+    amount: Optional[int] = None
     
 class ChatRequest(BaseModel):
     message: str
@@ -102,7 +106,28 @@ async def chat_endpoint(request: ChatRequest):
     
     bot = ChatBot(phone_number)
     bot_response = bot.ask(user_message)
+    # If bot_response is a dict (for payment redirect), unpack fields
+    if isinstance(bot_response, dict):
+        return MessageResponse(
+            response=bot_response.get('message', ''),
+            action=bot_response.get('action'),
+            plan=bot_response.get('plan'),
+            amount=bot_response.get('amount'),
+            missing_fields=None
+        )
     return MessageResponse(response=bot_response, missing_fields=None)
+
+@app.get("/plan_details/{phone_number}")
+def get_plan_details(phone_number: str):
+    from data_processing.user_context import get_selected_plan
+    plan = get_selected_plan(phone_number)
+    # TODO: Replace with real plan lookup from DB or config
+    # For now, use user_info budget as amount
+    user_info = get_user_info(phone_number)
+    amount = user_info.get('premium_budget', 1000)
+    return {"plan": plan, "amount": amount}
+
+app.include_router(payments_router)
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

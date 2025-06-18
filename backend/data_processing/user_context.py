@@ -62,3 +62,11 @@ def get_user_info(phone_number: str) -> dict:
     cursor.close()
     conn.close()
     return result or {}
+
+def set_selected_plan(phone_number: str, plan_id: str):
+    # Store the selected plan in user_context
+    update_user_context(phone_number, {'selected_plan': plan_id})
+
+def get_selected_plan(phone_number: str) -> str:
+    context = get_user_context(phone_number)
+    return context.get('selected_plan')

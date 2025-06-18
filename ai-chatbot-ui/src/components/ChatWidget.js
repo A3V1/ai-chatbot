@@ -1,9 +1,11 @@
 import React, { useContext, useState } from 'react';
 import { ChatContext } from './ChatContext';
+import { useNavigate } from 'react-router-dom';
 import './ChatWidget.css';
 
 function ChatWidget() {
   const { isOpen, toggleChat } = useContext(ChatContext);
+  const navigate = useNavigate();
   const [messages, setMessages] = useState([
     { text: 'Hi! I am here to help you with insurance today.', sender: 'bot' },
   ]);
@@ -14,6 +16,8 @@ function ChatWidget() {
   const [currentField, setCurrentField] = useState(null);
   const [pendingUserInfo, setPendingUserInfo] = useState([]); // Queue of user info questions
   const [collectingUserInfo, setCollectingUserInfo] = useState(false);
+  const [recommendedPlan, setRecommendedPlan] = useState(null);
+  const [planAmount, setPlanAmount] = useState(null);
 
   const closeChat = async () => {
     try {
@@ -198,19 +202,51 @@ function ChatWidget() {
                     if (!message.text || !message.text.trim()) return false;
                     return true;
                   })
-                  .map((message, index) => (
-                    <div key={index} className={`message-row ${message.sender === 'user' ? 'user-row' : 'bot-row'}`}>
-                      {message.sender === 'bot' && (
-                        <div className="avatar bot-avatar">🤖</div>
-                      )}
-                      <div className={`message ${message.sender}-message`}>
-                        {message.text}
+                  .map((message, index) => {
+                    // Redirect automatically if bot says 'Redirecting to payment page...'
+                    if (
+                      message.sender === 'bot' &&
+                      message.text &&
+                      message.text.toLowerCase().includes('redirecting to payment page')
+                    ) {
+                      setTimeout(() => {
+                        navigate('/payment', { state: { plan: recommendedPlan, amount: planAmount, phone_number: phoneNumber } });
+                      }, 500); // 0.5 second delay for UX
+                    }
+                    // Show payment button if bot says payment is being processed or ready to pay
+                    const showPaymentBtn =
+                      message.sender === 'bot' &&
+                      (
+                        message.text.toLowerCase().includes('ready to secure your policy') ||
+                        message.text.toLowerCase().includes('ready to make payment?') ||
+                        message.text.toLowerCase().includes('type \'yes\' to proceed with payment')
+                      );
+                    return (
+                      <div key={index} className={`message-row ${message.sender === 'user' ? 'user-row' : 'bot-row'}`}>
+                        {message.sender === 'bot' && (
+                          <div className="avatar bot-avatar">🤖</div>
+                        )}
+                        <div className={`message ${message.sender}-message`}>
+                          {message.text}
+                          {/* Show Proceed to Payment button after payment confirmation */}
+                          {showPaymentBtn && (
+                            <button className="footer-send-btn" style={{margin:'10px 0'}} onClick={() => navigate('/payment', { state: { plan: recommendedPlan, amount: planAmount, phone_number: phoneNumber } })}>
+                              Proceed to Payment
+                            </button>
+                          )}
+                          {/* Show Proceed to Payment button right after recommendation */}
+                          {message.sender === 'bot' && recommendedPlan && planAmount && message.text.includes(recommendedPlan) && (
+                            <button className="footer-send-btn" style={{margin:'10px 0'}} onClick={() => navigate('/payment', { state: { plan: recommendedPlan, amount: planAmount, phone_number: phoneNumber } })}>
+                              Proceed to Payment
+                            </button>
+                          )}
+                        </div>
+                        {message.sender === 'user' && (
+                          <div className="avatar user-avatar">🧑</div>
+                        )}
                       </div>
-                      {message.sender === 'user' && (
-                        <div className="avatar user-avatar">🧑</div>
-                      )}
-                    </div>
-                  ))}
+                    );
+                  })}
               </>
             )}
           </div>
