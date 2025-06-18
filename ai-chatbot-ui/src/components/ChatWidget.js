@@ -5,33 +5,25 @@ import './ChatWidget.css';
 function ChatWidget() {
   const { isOpen, toggleChat } = useContext(ChatContext);
   const [messages, setMessages] = useState([
-    { text: 'Hi! How can I help you with insurance today?', sender: 'bot' },
+    { text: 'Hi! I am here to help you with insurance today.', sender: 'bot' },
   ]);
   const [currentMessage, setCurrentMessage] = useState('');
   const [selectedFile, setSelectedFile] = useState(null);
   const [phoneNumber, setPhoneNumber] = useState('');
   const [isPhoneNumberSet, setIsPhoneNumberSet] = useState(false);
   const [currentField, setCurrentField] = useState(null);
-  // Track indices of user messages entered during user info input phase
-  const [userInfoInputIndices, setUserInfoInputIndices] = useState([]);
+  const [pendingUserInfo, setPendingUserInfo] = useState([]); // Queue of user info questions
+  const [collectingUserInfo, setCollectingUserInfo] = useState(false);
 
   const closeChat = async () => {
     try {
       if (isPhoneNumberSet) {
-        // Send exit message to backend
         await fetch('http://localhost:8000/chat', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ 
-            message: 'exit',
-            phone_number: phoneNumber 
-          }),
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: 'exit', phone_number: phoneNumber }),
         });
       }
-      
-      // Reset all states
       setMessages([
         { text: 'Hi! How can I help you with insurance today?', sender: 'bot' },
       ]);
@@ -40,8 +32,8 @@ function ChatWidget() {
       setPhoneNumber('');
       setIsPhoneNumberSet(false);
       setCurrentField(null);
-      
-      // Close the chat window
+      setPendingUserInfo([]);
+      setCollectingUserInfo(false);
       toggleChat();
     } catch (error) {
       console.error('Error closing chat:', error);
@@ -54,22 +46,20 @@ function ChatWidget() {
         method: 'POST',
       });
       const data = await response.json();
-
       if (data.missing_fields && data.missing_fields.length > 0) {
-        //  setMessages(prev => [...prev,
-        // {
-          
-        //   sender: 'bot'
-        // }
-        // ]);
-        
+        // Queue all missing fields
+        setPendingUserInfo(data.missing_fields);
+        setCollectingUserInfo(true);
+        // Show the first question as a bot message
+        setMessages(prev => [...prev, { text: data.missing_fields[0].question, sender: 'bot' }]);
         setCurrentField(data.missing_fields[0]);
       } else {
+        setPendingUserInfo([]);
+        setCollectingUserInfo(false);
         setCurrentField(null);
       }
       return true;
     } catch (error) {
-      console.error('Error initializing user:', error);
       setMessages(prev => [...prev, {
         text: "Sorry, there was an error setting up your chat. Please try again.",
         sender: 'bot'
@@ -88,68 +78,81 @@ function ChatWidget() {
     }
   };
 
-  // Update handleFieldSubmit to record user message indices
-  const handleFieldSubmit = async (value) => {
-    if (!currentField) return;
-    if (!value.trim()) return; // Prevent empty submissions
-    setMessages(prev => {
-      const newMessages = [...prev, { text: value, sender: 'user' }];
-      setUserInfoInputIndices(indices => [...indices, newMessages.length - 1]);
-      return newMessages;
-    });
-    setCurrentMessage('');
-    try {
-      const response = await fetch('http://localhost:8000/update_user_info', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          phone_number: phoneNumber,
-          field: currentField.field,
-          value: value
-        }),
-      });
-      const data = await response.json();
-      if (data.success) {
-        const remainingFields = data.missing_fields || [];
-        setCurrentField(remainingFields[0] || null);
-        if (remainingFields.length === 0) {
-          setMessages(prev => [...prev, { text: data.response, sender: 'bot' }]);
-        }
-      }
-    } catch (error) {
-      setMessages(prev => [...prev, { text: 'Error updating info. Try again.', sender: 'bot' }]);
-    }
-  };
-
+  // Unified send handler for both user info and normal chat
   const handleSendMessage = async () => {
-    if (currentMessage.trim() || selectedFile) {
-      const newMessage = { text: currentMessage, sender: 'user' };
-      setMessages(prev => [...prev, newMessage]);
-      setCurrentMessage('');
-      setSelectedFile(null);
-
+    if (!currentMessage.trim()) return;
+    const userMsg = { text: currentMessage, sender: 'user' };
+    setMessages(prev => [...prev, userMsg]);
+    setCurrentMessage('');
+    if (collectingUserInfo && currentField) {
+      // Send user info answer
       try {
-        const response = await fetch('http://localhost:8000/chat', {
+        const response = await fetch('http://localhost:8000/update_user_info', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ 
-            message: newMessage.text,
-            phone_number: phoneNumber 
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            phone_number: phoneNumber,
+            field: currentField.field,
+            value: currentMessage
           }),
         });
         const data = await response.json();
-        
+        const remainingFields = data.missing_fields || [];
+        if (remainingFields.length > 0) {
+          setPendingUserInfo(remainingFields);
+          setCurrentField(remainingFields[0]);
+          setMessages(prev => [...prev, { text: remainingFields[0].question, sender: 'bot' }]);
+        } else {
+          setPendingUserInfo([]);
+          setCurrentField(null);
+          setCollectingUserInfo(false);
+          // Now send the user's original message to the chat endpoint
+          // Use the last user message in the messages array
+          const lastUserMsg = userMsg.text;
+          try {
+            const chatResponse = await fetch('http://localhost:8000/chat', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ message: lastUserMsg, phone_number: phoneNumber }),
+            });
+            const chatData = await chatResponse.json();
+            if (chatData.missing_fields && chatData.missing_fields.length > 0) {
+              setPendingUserInfo(chatData.missing_fields);
+              setCollectingUserInfo(true);
+              setCurrentField(chatData.missing_fields[0]);
+              setMessages(prev => [...prev, { text: chatData.missing_fields[0].question, sender: 'bot' }]);
+            } else {
+              setMessages(prev => [...prev, { text: chatData.response, sender: 'bot' }]);
+            }
+          } catch (error) {
+            setMessages(prev => [...prev, {
+              text: 'Sorry, there was an error connecting to the chatbot.',
+              sender: 'bot'
+            }]);
+          }
+        }
+      } catch (error) {
+        setMessages(prev => [...prev, { text: 'Error updating info. Try again.', sender: 'bot' }]);
+      }
+    } else {
+      // Normal chat
+      try {
+        const response = await fetch('http://localhost:8000/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: userMsg.text, phone_number: phoneNumber }),
+        });
+        const data = await response.json();
         if (data.missing_fields && data.missing_fields.length > 0) {
+          setPendingUserInfo(data.missing_fields);
+          setCollectingUserInfo(true);
           setCurrentField(data.missing_fields[0]);
+          setMessages(prev => [...prev, { text: data.missing_fields[0].question, sender: 'bot' }]);
         } else {
           setMessages(prev => [...prev, { text: data.response, sender: 'bot' }]);
         }
       } catch (error) {
-        setMessages(prev => [...prev, { 
+        setMessages(prev => [...prev, {
           text: 'Sorry, there was an error connecting to the chatbot.',
           sender: 'bot'
         }]);
@@ -182,46 +185,16 @@ function ChatWidget() {
                 />
                 <button className="start-chat-button" type="submit">Start Chat</button>
               </form>
-            ) : currentField ? (
-              <div className="field-form">
-                <p className="field-question">{currentField.question}</p>
-                <div className="field-input-row">
-                  <input
-                    type="text"
-                    className="field-input"
-                    value={currentMessage}
-                    onChange={(e) => setCurrentMessage(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        handleFieldSubmit(currentMessage);
-                        setCurrentMessage('');
-                      }
-                    }}
-                    placeholder="Type your answer here..."
-                    autoFocus
-                  />
-                  <button className="submit-btn" onClick={() => {
-                    handleFieldSubmit(currentMessage);
-                    setCurrentMessage('');
-                  }}>
-                    Submit
-                  </button>
-                </div>
-              </div>
             ) : (
               <>
                 {messages
-                  .filter((message, index) => {
-                    // Hide error/info messages
+                  .filter((message) => {
                     const hiddenBotMessages = [
                       'Error updating info. Try again.',
                       'Sorry, there was an error setting up your chat. Please try again.',
                       'Sorry, there was an error connecting to the chatbot.'
                     ];
                     if (hiddenBotMessages.includes(message.text)) return false;
-                    // Hide user messages that were entered during user info input phase
-                    if (userInfoInputIndices && userInfoInputIndices.includes(index) && message.sender === 'user') return false;
-                    // Hide empty or whitespace-only messages
                     if (!message.text || !message.text.trim()) return false;
                     return true;
                   })
@@ -241,7 +214,7 @@ function ChatWidget() {
               </>
             )}
           </div>
-          {isPhoneNumberSet && !currentField && (
+          {isPhoneNumberSet && (
             <div className="chat-footer">
               <input
                 type="text"
@@ -255,8 +228,9 @@ function ChatWidget() {
                   }
                 }}
                 autoFocus
+                disabled={collectingUserInfo && !currentField}
               />
-              <button className="footer-send-btn" onClick={handleSendMessage}>Send</button>
+              <button className="footer-send-btn" onClick={handleSendMessage} disabled={collectingUserInfo && !currentField}>Send</button>
             </div>
           )}
         </div>
