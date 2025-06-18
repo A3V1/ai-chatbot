@@ -106,6 +106,16 @@ async def chat_endpoint(request: ChatRequest):
     
     bot = ChatBot(phone_number)
     bot_response = bot.ask(user_message)
+    # If bot_response is a PaymentResponse, unpack fields
+    from cbot import PaymentResponse
+    if isinstance(bot_response, PaymentResponse):
+        return MessageResponse(
+            response=bot_response.message,
+            action=bot_response.action,
+            plan=bot_response.plan,
+            amount=bot_response.amount,
+            missing_fields=None
+        )
     # If bot_response is a dict (for payment redirect), unpack fields
     if isinstance(bot_response, dict):
         return MessageResponse(

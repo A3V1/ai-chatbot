@@ -164,6 +164,15 @@ function ChatWidget() {
     }
   };
 
+  // Function to create a 2MB dummy file
+  const handleAdd2MBFile = () => {
+    const size = 2 * 1024 * 1024; // 2MB in bytes
+    const blob = new Blob([new Uint8Array(size)], { type: 'application/octet-stream' });
+    const file = new File([blob], 'dummy-2mb-file.bin', { type: 'application/octet-stream' });
+    setSelectedFile(file);
+    alert('file added!');
+  };
+
   return (
     <div className="chat-widget">
       <button className="chat-button" onClick={toggleChat}>
@@ -267,6 +276,7 @@ function ChatWidget() {
                 disabled={collectingUserInfo && !currentField}
               />
               <button className="footer-send-btn" onClick={handleSendMessage} disabled={collectingUserInfo && !currentField}>Send</button>
+              <button className="footer-send-btn" onClick={handleAdd2MBFile} style={{ marginLeft: '8px' }}>Add File</button>
             </div>
           )}
         </div>
