@@ -167,8 +167,11 @@ function ChatWidget() {
   const confirmPayment = () => {
     setShowPaymentConfirm(false);
     if (pendingPaymentData) {
-      navigate('/payment', { state: pendingPaymentData });
-      setPendingPaymentData(null);
+      // Add a delay to ensure backend has updated selected_plan
+      setTimeout(() => {
+        navigate('/payment', { state: pendingPaymentData });
+        setPendingPaymentData(null);
+      }, 700); // 700ms delay
     }
   };
 
@@ -266,7 +269,15 @@ function ChatWidget() {
                           )}
                           {/* Show Proceed to Payment button right after recommendation */}
                           {message.sender === 'bot' && recommendedPlan && planAmount && message.text.includes(recommendedPlan) && (
-                            <button className="footer-send-btn" style={{margin:'10px 0'}} onClick={() => handleProceedToPayment({ plan: recommendedPlan, amount: planAmount, phone_number: phoneNumber })}>
+                            <button
+                              className="footer-send-btn"
+                              style={{ margin: '10px 0' }}
+                              onClick={() => {
+                                // Debug log for payment navigation
+                                window.console && console.debug && console.debug('Proceed to Payment clicked:', { plan: recommendedPlan, amount: planAmount, phone_number: phoneNumber });
+                                handleProceedToPayment({ plan: recommendedPlan, amount: planAmount, phone_number: phoneNumber });
+                              }}
+                            >
                               Proceed to Payment
                             </button>
                           )}

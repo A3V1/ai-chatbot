@@ -1,0 +1,92 @@
+/* PaymentPage.css */
+
+:where(.payment-wrapper) {
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f4f4f4;
+  padding: 20px;
+}
+
+:where(.payment-container) {
+  padding: 28px;
+  text-align: center;
+  background: #fff !important;
+  min-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #222 !important;
+  box-shadow: 0 8px 32px rgba(26,43,71,0.08);
+  border-radius: 18px;
+  max-width: 320px;
+  margin: auto;
+  z-index: 2;
+}
+
+:where(.payment-title) {
+  font-size: 2rem;
+  margin-bottom: 20px;
+  color: #c85f44 !important;
+  font-family: 'Playfair Display', serif;
+}
+
+:where(.payment-detail) {
+  font-size: 1.2rem;
+  margin: 10px 0;
+  color: #333 !important;
+}
+
+:where(.payment-amount) {
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: #333 !important;
+  margin-bottom: 30px;
+}
+
+:where(.pay-now-btn) {
+  padding: 10px 30px;
+  font-size: 18px;
+  background: #c85f44 !important;
+  color: #fff !important;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s;
+  margin-bottom: 10px;
+}
+:where(.pay-now-btn):hover {
+  background: #a94a32 !important;
+}
+
+:where(.payment-debug) {
+  margin-top: 30px;
+  background: #f5f5f5 !important;
+  padding: 20px;
+  border-radius: 8px;
+  color: #333 !important;
+  font-size: 14px;
+  max-width: 400px;
+  margin-left: auto;
+  margin-right: auto;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+
+@media (max-width: 600px) {
+  :where(.payment-container) {
+    padding: 20px;
+    max-width: 98vw;
+  }
+  :where(.payment-title) {
+    font-size: 1.3rem;
+  }
+  :where(.payment-amount) {
+    font-size: 1.1rem;
+  }
+  :where(.pay-now-btn) {
+    font-size: 16px;
+    padding: 8px 18px;
+  }
+}
