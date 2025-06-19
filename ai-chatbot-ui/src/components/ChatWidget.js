@@ -1,4 +1,4 @@
-import React, { useContext, useState } from 'react';
+import React, { useContext, useState, useEffect } from 'react';
 import { ChatContext } from './ChatContext';
 import { useNavigate } from 'react-router-dom';
 import './ChatWidget.css';
@@ -10,14 +10,16 @@ function ChatWidget() {
     { text: 'Hi! I am here to help you with insurance today.', sender: 'bot' },
   ]);
   const [currentMessage, setCurrentMessage] = useState('');
-  const [selectedFile, setSelectedFile] = useState(null);
+  const [selectedFile, setSelectedFile] = useState(null); // for file upload
   const [phoneNumber, setPhoneNumber] = useState('');
   const [isPhoneNumberSet, setIsPhoneNumberSet] = useState(false);
   const [currentField, setCurrentField] = useState(null);
-  const [pendingUserInfo, setPendingUserInfo] = useState([]); // Queue of user info questions
+  const [pendingUserInfo, setPendingUserInfo] = useState([]); // for onboarding questions
   const [collectingUserInfo, setCollectingUserInfo] = useState(false);
-  const [recommendedPlan, setRecommendedPlan] = useState(null);
-  const [planAmount, setPlanAmount] = useState(null);
+  const [recommendedPlan, setRecommendedPlan] = useState(null); // set when bot recommends a plan
+  const [planAmount, setPlanAmount] = useState(null); // set when bot recommends a plan
+  const [showPaymentConfirm, setShowPaymentConfirm] = useState(false);
+  const [pendingPaymentData, setPendingPaymentData] = useState(null);
 
   const closeChat = async () => {
     try {
@@ -32,11 +34,9 @@ function ChatWidget() {
         { text: 'Hi! How can I help you with insurance today?', sender: 'bot' },
       ]);
       setCurrentMessage('');
-      setSelectedFile(null);
       setPhoneNumber('');
       setIsPhoneNumberSet(false);
       setCurrentField(null);
-      setPendingUserInfo([]);
       setCollectingUserInfo(false);
       toggleChat();
     } catch (error) {
@@ -52,15 +52,13 @@ function ChatWidget() {
       const data = await response.json();
       if (data.missing_fields && data.missing_fields.length > 0) {
         // Queue all missing fields
-        setPendingUserInfo(data.missing_fields);
         setCollectingUserInfo(true);
         // Show the first question as a bot message
         setMessages(prev => [...prev, { text: data.missing_fields[0].question, sender: 'bot' }]);
         setCurrentField(data.missing_fields[0]);
       } else {
-        setPendingUserInfo([]);
-        setCollectingUserInfo(false);
         setCurrentField(null);
+        setCollectingUserInfo(false);
       }
       return true;
     } catch (error) {
@@ -103,11 +101,9 @@ function ChatWidget() {
         const data = await response.json();
         const remainingFields = data.missing_fields || [];
         if (remainingFields.length > 0) {
-          setPendingUserInfo(remainingFields);
           setCurrentField(remainingFields[0]);
           setMessages(prev => [...prev, { text: remainingFields[0].question, sender: 'bot' }]);
         } else {
-          setPendingUserInfo([]);
           setCurrentField(null);
           setCollectingUserInfo(false);
           // Now send the user's original message to the chat endpoint
@@ -121,7 +117,6 @@ function ChatWidget() {
             });
             const chatData = await chatResponse.json();
             if (chatData.missing_fields && chatData.missing_fields.length > 0) {
-              setPendingUserInfo(chatData.missing_fields);
               setCollectingUserInfo(true);
               setCurrentField(chatData.missing_fields[0]);
               setMessages(prev => [...prev, { text: chatData.missing_fields[0].question, sender: 'bot' }]);
@@ -148,7 +143,6 @@ function ChatWidget() {
         });
         const data = await response.json();
         if (data.missing_fields && data.missing_fields.length > 0) {
-          setPendingUserInfo(data.missing_fields);
           setCollectingUserInfo(true);
           setCurrentField(data.missing_fields[0]);
           setMessages(prev => [...prev, { text: data.missing_fields[0].question, sender: 'bot' }]);
@@ -164,14 +158,41 @@ function ChatWidget() {
     }
   };
 
-  // Function to create a 2MB dummy file
-  const handleAdd2MBFile = () => {
-    const size = 2 * 1024 * 1024; // 2MB in bytes
-    const blob = new Blob([new Uint8Array(size)], { type: 'application/octet-stream' });
-    const file = new File([blob], 'dummy-2mb-file.bin', { type: 'application/octet-stream' });
-    setSelectedFile(file);
-    alert('file added!');
+  // Helper to handle payment navigation with confirmation
+  const handleProceedToPayment = (data) => {
+    setPendingPaymentData(data);
+    setShowPaymentConfirm(true);
   };
+
+  const confirmPayment = () => {
+    setShowPaymentConfirm(false);
+    if (pendingPaymentData) {
+      navigate('/payment', { state: pendingPaymentData });
+      setPendingPaymentData(null);
+    }
+  };
+
+  const cancelPayment = () => {
+    setShowPaymentConfirm(false);
+    setPendingPaymentData(null);
+  };
+
+  // When bot recommends a plan, update recommendedPlan and planAmount
+  useEffect(() => {
+    const lastBotMsg = messages.filter(m => m.sender === 'bot').slice(-1)[0];
+    if (lastBotMsg && lastBotMsg.text) {
+      // Try to extract plan name and amount from bot message
+      const planMatch = lastBotMsg.text.match(/\*\*(.+?)\*\*/); // e.g. **HomeSecure Essentials**
+      if (planMatch) {
+        setRecommendedPlan(planMatch[1]);
+      }
+      // Try to extract amount (₹ or Rs)
+      const amtMatch = lastBotMsg.text.match(/(?:₹|Rs\.?)[ ]?([\d,]+)/);
+      if (amtMatch) {
+        setPlanAmount(parseInt(amtMatch[1].replace(/,/g, '')));
+      }
+    }
+  }, [messages]);
 
   return (
     <div className="chat-widget">
@@ -219,7 +240,7 @@ function ChatWidget() {
                       message.text.toLowerCase().includes('redirecting to payment page')
                     ) {
                       setTimeout(() => {
-                        navigate('/payment', { state: { plan: recommendedPlan, amount: planAmount, phone_number: phoneNumber } });
+                        handleProceedToPayment({ plan: recommendedPlan, amount: planAmount, phone_number: phoneNumber });
                       }, 500); // 0.5 second delay for UX
                     }
                     // Show payment button if bot says payment is being processed or ready to pay
@@ -228,7 +249,7 @@ function ChatWidget() {
                       (
                         message.text.toLowerCase().includes('ready to secure your policy') ||
                         message.text.toLowerCase().includes('ready to make payment?') ||
-                        message.text.toLowerCase().includes('type \'yes\' to proceed with payment')
+                        message.text.toLowerCase().includes("type 'yes' to proceed with payment")
                       );
                     return (
                       <div key={index} className={`message-row ${message.sender === 'user' ? 'user-row' : 'bot-row'}`}>
@@ -239,13 +260,13 @@ function ChatWidget() {
                           {message.text}
                           {/* Show Proceed to Payment button after payment confirmation */}
                           {showPaymentBtn && (
-                            <button className="footer-send-btn" style={{margin:'10px 0'}} onClick={() => navigate('/payment', { state: { plan: recommendedPlan, amount: planAmount, phone_number: phoneNumber } })}>
+                            <button className="footer-send-btn" style={{margin:'10px 0'}} onClick={() => handleProceedToPayment({ plan: recommendedPlan, amount: planAmount, phone_number: phoneNumber })}>
                               Proceed to Payment
                             </button>
                           )}
                           {/* Show Proceed to Payment button right after recommendation */}
                           {message.sender === 'bot' && recommendedPlan && planAmount && message.text.includes(recommendedPlan) && (
-                            <button className="footer-send-btn" style={{margin:'10px 0'}} onClick={() => navigate('/payment', { state: { plan: recommendedPlan, amount: planAmount, phone_number: phoneNumber } })}>
+                            <button className="footer-send-btn" style={{margin:'10px 0'}} onClick={() => handleProceedToPayment({ plan: recommendedPlan, amount: planAmount, phone_number: phoneNumber })}>
                               Proceed to Payment
                             </button>
                           )}
@@ -276,7 +297,21 @@ function ChatWidget() {
                 disabled={collectingUserInfo && !currentField}
               />
               <button className="footer-send-btn" onClick={handleSendMessage} disabled={collectingUserInfo && !currentField}>Send</button>
-              <button className="footer-send-btn" onClick={handleAdd2MBFile} style={{ marginLeft: '8px' }}>Add File</button>
+            </div>
+          )}
+          {/* Payment Confirmation Modal */}
+          {showPaymentConfirm && (
+            <div className="payment-confirm-modal" style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.4)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000}}>
+              <div style={{background:'#fff',padding:30,borderRadius:8,minWidth:300,textAlign:'center',boxShadow:'0 2px 12px rgba(0,0,0,0.2)'}}>
+                <h3>Confirm Payment</h3>
+                <p>You are about to proceed to payment for:</p>
+                <p><b>Plan:</b> {pendingPaymentData?.plan || 'N/A'}</p>
+                <p><b>Amount:</b> ₹{pendingPaymentData?.amount || 'N/A'}</p>
+                <div style={{marginTop:20}}>
+                  <button className="footer-send-btn" style={{marginRight:10}} onClick={confirmPayment}>Confirm</button>
+                  <button className="footer-send-btn" onClick={cancelPayment}>Cancel</button>
+                </div>
+              </div>
             </div>
           )}
         </div>

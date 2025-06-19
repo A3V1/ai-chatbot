@@ -1,9 +1,11 @@
 """
-User Context Management Module
-
-This module handles user context data including chat history, conversation state,
-and selected plans. It provides a clean interface for database operations
-related to user context management.
+user_context.py - User Context Management Module
+------------------------------------------------
+Handles all database operations related to user context and profile for the chatbot:
+- Persists and retrieves chat history, conversation state, and context summary
+- Manages user profile info and selected plan
+- Provides utility functions for conversation state and chat message management
+- Ensures robust error handling and logging
 """
 
 import json
@@ -13,39 +15,43 @@ from contextlib import contextmanager
 
 from .mysql_connector import get_mysql_connection
 
-# Configure logging
+# Configure logging for debugging and error tracking
 logger = logging.getLogger(__name__)
 
-
+# =============================
+# Exception Classes
+# =============================
 class UserContextError(Exception):
-    """Custom exception for user context operations"""
+    """Custom exception for user context operations (DB, serialization, etc.)"""
     pass
-
 
 class DatabaseConnectionError(UserContextError):
     """Exception for database connection issues"""
     pass
 
-
+# =============================
+# UserContextManager: Core DB Logic
+# =============================
 class UserContextManager:
     """
-    Manages user context operations with improved error handling and structure.
+    Manages all user context operations:
+    - Ensures user context row exists
+    - Loads and updates user context (state, summary, chat history)
+    - Handles serialization/deserialization of chat history
+    - Manages selected plan and user info
+    - Provides robust error handling
     """
-    
     @staticmethod
     @contextmanager
     def get_db_connection(dictionary: bool = False):
         """
-        Context manager for database connections with proper cleanup.
-        
+        Context manager for DB connections. Yields (conn, cursor) and ensures cleanup.
         Args:
-            dictionary: Whether to return results as dictionaries
-            
+            dictionary: If True, returns results as dicts
         Yields:
-            Database connection and cursor
-            
+            conn, cursor
         Raises:
-            DatabaseConnectionError: If connection fails
+            DatabaseConnectionError if connection fails
         """
         conn = None
         cursor = None
@@ -67,16 +73,8 @@ class UserContextManager:
     @staticmethod
     def _serialize_chat_history(chat_history: List[Dict[str, Any]]) -> str:
         """
-        Serialize chat history to JSON string.
-        
-        Args:
-            chat_history: List of chat messages
-            
-        Returns:
-            JSON string representation
-            
-        Raises:
-            UserContextError: If serialization fails
+        Serialize chat history (list of messages) to JSON string for DB storage.
+        Raises UserContextError if serialization fails.
         """
         try:
             return json.dumps(chat_history, ensure_ascii=False)
@@ -87,13 +85,8 @@ class UserContextManager:
     @staticmethod
     def _deserialize_chat_history(chat_history_json: str) -> List[Dict[str, Any]]:
         """
-        Deserialize chat history from JSON string.
-        
-        Args:
-            chat_history_json: JSON string representation
-            
-        Returns:
-            List of chat messages
+        Deserialize chat history JSON string from DB to list of messages.
+        Returns empty list if invalid or empty.
         """
         if not chat_history_json:
             return []
@@ -108,16 +101,8 @@ class UserContextManager:
     @classmethod
     def ensure_user_context_row(cls, phone_number: str) -> bool:
         """
-        Ensure user context row exists in database.
-        
-        Args:
-            phone_number: User's phone number
-            
-        Returns:
-            True if row exists or was created successfully
-            
-        Raises:
-            UserContextError: If operation fails
+        Ensure a user_context row exists for the given phone number. Creates if missing.
+        Returns True if exists or created.
         """
         if not phone_number or not phone_number.strip():
             raise ValueError("Phone number cannot be empty")
@@ -149,16 +134,8 @@ class UserContextManager:
     @classmethod
     def get_user_context(cls, phone_number: str) -> Dict[str, Any]:
         """
-        Retrieve user context from database.
-        
-        Args:
-            phone_number: User's phone number
-            
-        Returns:
-            Dictionary containing user context data
-            
-        Raises:
-            UserContextError: If retrieval fails
+        Retrieve the full user context (state, summary, chat history, etc.) from DB.
+        Returns dict of all columns for the user.
         """
         if not phone_number or not phone_number.strip():
             raise ValueError("Phone number cannot be empty")
@@ -191,17 +168,8 @@ class UserContextManager:
     @classmethod
     def update_user_context(cls, phone_number: str, updates: Dict[str, Any]) -> bool:
         """
-        Update user context with given data.
-        
-        Args:
-            phone_number: User's phone number
-            updates: Dictionary of fields to update
-            
-        Returns:
-            True if update was successful
-            
-        Raises:
-            UserContextError: If update fails
+        Update fields in user_context for the user. Handles chat_history serialization.
+        Returns True if update successful.
         """
         if not phone_number or not phone_number.strip():
             raise ValueError("Phone number cannot be empty")
@@ -244,18 +212,8 @@ class UserContextManager:
         chat_history: Optional[List[Dict[str, Any]]] = None
     ) -> bool:
         """
-        Save context summary and chat history.
-        
-        Args:
-            phone_number: User's phone number
-            context_summary: Context summary to save
-            chat_history: Optional chat history list
-            
-        Returns:
-            True if save was successful
-            
-        Raises:
-            UserContextError: If save fails
+        Save context summary and chat history for the user.
+        Returns True if save successful.
         """
         if not phone_number or not phone_number.strip():
             raise ValueError("Phone number cannot be empty")
@@ -274,16 +232,8 @@ class UserContextManager:
     @classmethod
     def load_user_data(cls, phone_number: str) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
         """
-        Load user context and chat history.
-        
-        Args:
-            phone_number: User's phone number
-            
-        Returns:
-            Tuple of (context_dict, chat_history_list)
-            
-        Raises:
-            UserContextError: If load fails
+        Load user context and chat history for the user.
+        Returns (context_dict, chat_history_list).
         """
         if not phone_number or not phone_number.strip():
             raise ValueError("Phone number cannot be empty")
@@ -308,16 +258,8 @@ class UserContextManager:
     @classmethod
     def get_user_info(cls, phone_number: str) -> Dict[str, Any]:
         """
-        Retrieve user info from database.
-        
-        Args:
-            phone_number: User's phone number
-            
-        Returns:
-            Dictionary containing user info
-            
-        Raises:
-            UserContextError: If retrieval fails
+        Retrieve user profile info from user_info table.
+        Returns dict of all columns for the user.
         """
         if not phone_number or not phone_number.strip():
             raise ValueError("Phone number cannot be empty")
@@ -340,17 +282,8 @@ class UserContextManager:
     @classmethod
     def set_selected_plan(cls, phone_number: str, plan_id: str) -> bool:
         """
-        Store the selected plan for a user.
-        
-        Args:
-            phone_number: User's phone number
-            plan_id: ID of the selected plan
-            
-        Returns:
-            True if plan was set successfully
-            
-        Raises:
-            UserContextError: If operation fails
+        Store the selected plan for the user in user_context.
+        Returns True if successful.
         """
         if not phone_number or not phone_number.strip():
             raise ValueError("Phone number cannot be empty")
@@ -370,16 +303,8 @@ class UserContextManager:
     @classmethod
     def get_selected_plan(cls, phone_number: str) -> Optional[str]:
         """
-        Retrieve the selected plan for a user.
-        
-        Args:
-            phone_number: User's phone number
-            
-        Returns:
-            Selected plan ID or None if not set
-            
-        Raises:
-            UserContextError: If retrieval fails
+        Retrieve the selected plan for the user from user_context.
+        Returns plan_id or None.
         """
         if not phone_number or not phone_number.strip():
             raise ValueError("Phone number cannot be empty")
@@ -398,16 +323,8 @@ class UserContextManager:
     @classmethod
     def clear_user_context(cls, phone_number: str) -> bool:
         """
-        Clear user context data (useful for testing or user reset).
-        
-        Args:
-            phone_number: User's phone number
-            
-        Returns:
-            True if context was cleared successfully
-            
-        Raises:
-            UserContextError: If operation fails
+        Delete the user_context row for the user (for testing or reset).
+        Returns True if row deleted.
         """
         if not phone_number or not phone_number.strip():
             raise ValueError("Phone number cannot be empty")
@@ -429,7 +346,10 @@ class UserContextManager:
             raise UserContextError(f"Failed to clear user context: {e}")
 
 
-# Backward compatibility - expose functions at module level
+# =============================
+# Backward Compatibility: Module-level Functions
+# =============================
+# These wrappers allow other modules to use the manager easily.
 def ensure_user_context_row(phone_number: str) -> bool:
     """Backward compatibility wrapper"""
     return UserContextManager.ensure_user_context_row(phone_number)
@@ -474,16 +394,13 @@ def get_selected_plan(phone_number: str) -> Optional[str]:
     return UserContextManager.get_selected_plan(phone_number)
 
 
-# Additional utility functions
+# =============================
+# Utility Functions
+# =============================
 def get_user_conversation_state(phone_number: str) -> Optional[str]:
     """
-    Get the current conversation state for a user.
-    
-    Args:
-        phone_number: User's phone number
-        
-    Returns:
-        Current conversation state or None
+    Get the current conversation state for a user from user_context.
+    Returns state string or None.
     """
     try:
         context = get_user_context(phone_number)
@@ -495,14 +412,8 @@ def get_user_conversation_state(phone_number: str) -> Optional[str]:
 
 def set_user_conversation_state(phone_number: str, state: str) -> bool:
     """
-    Set the conversation state for a user.
-    
-    Args:
-        phone_number: User's phone number
-        state: New conversation state
-        
-    Returns:
-        True if state was set successfully
+    Set the conversation state for a user in user_context.
+    Returns True if successful.
     """
     try:
         return update_user_context(phone_number, {'conversation_state': state})
@@ -513,15 +424,8 @@ def set_user_conversation_state(phone_number: str, state: str) -> bool:
 
 def add_chat_message(phone_number: str, message_type: str, content: str) -> bool:
     """
-    Add a single message to user's chat history.
-    
-    Args:
-        phone_number: User's phone number
-        message_type: Type of message ('human' or 'ai')
-        content: Message content
-        
-    Returns:
-        True if message was added successfully
+    Add a message to the user's chat history and persist it.
+    Returns True if successful.
     """
     try:
         context, chat_history = load_user_data(phone_number)
@@ -538,3 +442,18 @@ def add_chat_message(phone_number: str, message_type: str, content: str) -> bool
     except Exception as e:
         logger.error(f"Failed to add chat message for {phone_number}: {e}")
         return False
+
+
+def fetch_and_store_selected_plan_for_payment(phone_number: str, context: dict) -> dict:
+    """
+    Fetch the selected plan from user_context and store it in the provided context dict for payment processing.
+    Returns the updated context dict.
+    """
+    try:
+        selected_plan = get_selected_plan(phone_number)
+        context['selected_plan'] = selected_plan
+        return context
+    except Exception as e:
+        logger.error(f"Failed to fetch/store selected plan for payment for {phone_number}: {e}")
+        context['selected_plan'] = None
+        return context

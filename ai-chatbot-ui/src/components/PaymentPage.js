@@ -4,7 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 function PaymentPage() {
   const location = useLocation();
   const navigate = useNavigate();
-  const [plan, setPlan] = useState('');
+  const [selectedPlan, setSelectedPlan] = useState('');
   const [amount, setAmount] = useState('');
   const [loading, setLoading] = useState(true);
 
@@ -19,29 +19,33 @@ function PaymentPage() {
       navigate('/');
       return;
     }
-    fetch(`http://localhost:8000/plan_details/${phone_number}`)
-      .then(res => res.json())
+    // Fetch selected plan and amount from backend
+    fetch(`http://localhost:8000/api/payment-details?phone_number=${phone_number}`)
+      .then(res => {
+        if (!res.ok) throw new Error('Network response was not ok');
+        return res.json();
+      })
       .then(data => {
-        setPlan(data.plan);
+        setSelectedPlan(data.selected_plan);
         setAmount(data.amount);
         setLoading(false);
       })
-      .catch(() => {
-        alert('Could not fetch plan details.');
+      .catch((err) => {
+        alert('Could not fetch payment details.');
         navigate('/');
       });
   }, [navigate, location.state]);
 
   if (loading) return <div>Loading payment details...</div>;
-  if (!plan || !amount) {
+  if (!selectedPlan || amount === null || amount === undefined) {
     return <div>No payment details found. <button onClick={() => navigate('/')}>Go Home</button></div>;
   }
 
   return (
     <div style={{ padding: 40, textAlign: 'center' }}>
       <h2>Proceed to Payment</h2>
-      <p><b>Plan:</b> {plan}</p>
-      <p><b>Amount:</b> ₹{amount}</p>
+      <p><b>Selected Plan:</b> {selectedPlan}</p>
+      <p><b>Premium Amount:</b> ₹{amount}</p>
       <button style={{ padding: '10px 30px', fontSize: 18, background: '#c85f44', color: '#fff', border: 'none', borderRadius: 6 }} onClick={() => alert('Payment functionality coming soon!')}>Pay Now</button>
     </div>
   );
