@@ -5,6 +5,10 @@ import App from './App';
 import reportWebVitals from './reportWebVitals';
 import { ChatProvider } from './components/ChatContext';
 
+window.addEventListener('load', () => {
+  localStorage.clear();
+});
+
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
   <React.StrictMode>

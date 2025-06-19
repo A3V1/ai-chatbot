@@ -1,5 +1,9 @@
 import React, { createContext, useState } from 'react';
 
+window.addEventListener('load', () => {
+  localStorage.clear();
+});
+
 export const ChatContext = createContext();
 
 export const ChatProvider = ({ children }) => {

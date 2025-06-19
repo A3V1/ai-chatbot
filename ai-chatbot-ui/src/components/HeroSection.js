@@ -1,6 +1,10 @@
 import React, { useContext } from 'react';
 import { ChatContext } from './ChatContext';
 
+window.addEventListener('load', () => {
+  localStorage.clear();
+});
+
 function HeroSection() {
   const { toggleChat } = useContext(ChatContext);
 

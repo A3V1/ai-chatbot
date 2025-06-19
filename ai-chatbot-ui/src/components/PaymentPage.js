@@ -2,6 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import './paymentpage.css';
 
+window.addEventListener('load', () => {
+  localStorage.clear();
+});
+
 function PaymentPage() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -38,8 +42,8 @@ function PaymentPage() {
         console.debug('PaymentPage: payment-details response', data); // Debug: log backend response
         // Extra debug: show time and phone number
         console.debug('Fetched at:', new Date().toISOString(), 'for phone:', phone_number);
-        setSelectedPlan(data.selected_plan || (location.state && location.state.plan) || '');
-        setAmount(data.amount || (location.state && location.state.amount) || '');
+        setSelectedPlan(data.selected_plan || '');
+        setAmount(data.amount || '');
         setDebugInfo(data);
         setLoading(false);
         clearTimeout(timeoutId);
@@ -57,7 +61,10 @@ function PaymentPage() {
 
   if (loading) return <div>Loading payment details...<br/>Debug: {JSON.stringify(debugInfo)}</div>;
   if (!selectedPlan || amount == null || amount === '') {
-    return <div>No payment details found. <button onClick={() => navigate('/')}>Go Home</button></div>;
+    return <div>No payment details found. <button onClick={() => {
+      localStorage.clear();
+      navigate('/');
+    }}>Go Home</button></div>;
   }
 
   return (
@@ -65,7 +72,10 @@ function PaymentPage() {
       <h2 className="payment-title"></h2>
       <p className="payment-detail"><b>Selected Plan:</b> {selectedPlan}</p>
       <p className="payment-detail payment-amount"><b>Premium Amount:</b> ₹{amount}</p>
-      <button className="pay-now-btn" onClick={() => alert('Payment functionality next step')}>Pay Now</button>
+      <button className="pay-now-btn" onClick={() => {
+        alert('Payment functionality next step');
+        localStorage.clear();
+      }}>Pay Now</button>
       {/* Debug Info Section
       <div className="payment-debug">
         <b>Debug Info:</b>

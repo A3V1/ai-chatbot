@@ -3,6 +3,11 @@ import { ChatContext } from './ChatContext';
 import { useNavigate } from 'react-router-dom';
 import './ChatWidget.css';
 
+// Clear localStorage on window load
+window.addEventListener('load', () => {
+  localStorage.clear();
+});
+
 function ChatWidget() {
   const { isOpen, toggleChat } = useContext(ChatContext);
   const navigate = useNavigate();

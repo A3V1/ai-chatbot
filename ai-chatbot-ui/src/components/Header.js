@@ -1,5 +1,8 @@
 import React from 'react';
 
+window.addEventListener('load', () => {
+  localStorage.clear();
+});
 
 function Header() {
   return (

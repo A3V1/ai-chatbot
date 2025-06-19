@@ -1,5 +1,9 @@
 import React from 'react';
 
+window.addEventListener('load', () => {
+  localStorage.clear();
+});
+
 function FeaturesSection() {
   return (
     <section className="features">

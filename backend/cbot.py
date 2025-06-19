@@ -259,6 +259,8 @@ BOT:
   "plan": "x",
   "amount": 14800,
   "message": "Redirecting to payment page..."
+  
+  you have vehicle insurance with to recommend too.
 
 
 """
@@ -622,7 +624,7 @@ class UserInfoManager:
     - Creates new user entries
     """
     REQUIRED_FIELDS = [
-        ("interested_policy_type", "What type of insurance are you interested in (Term Life, Health, Investment, etc.)?"),
+        ("interested_policy_type", "What type of insurance are you interested in?"),
         ("age", "What's your age?"),
         ("desired_coverage", "What is the coverage amount you are looking for?"),
         ("premium_budget", "What is your budget for annual premium?"),
@@ -726,8 +728,7 @@ def main():
             
             if not UserInfoManager.update_user_info(phone_number, field, value):
                 print(f"Failed to update {field}. Please try again.")
-                continue
-        
+            else:             continue
         user_info = get_user_info(phone_number)
     
     # Start chat

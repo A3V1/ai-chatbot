@@ -1,6 +1,7 @@
 import os
 from dotenv import load_dotenv
 load_dotenv()
+from typing import Optional
 
 # data_processing/mysql_connector.py
 import mysql.connector
@@ -59,3 +60,22 @@ def get_policy_premium(policy_name: str):
     cursor.close()
     conn.close()
     return result[0] if result else None
+
+def get_selected_plan(phone_number: str):
+    """
+    Retrieve the selected plan for the user from user_context using a SELECT statement.
+    Returns plan_id or None.
+    """
+    if not phone_number or not phone_number.strip():
+        raise ValueError("Phone number cannot be empty")
+    conn = get_mysql_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT selected_plan FROM user_context WHERE phone_number = %s",
+        (phone_number,)
+    )
+    result = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    selected_plan = result[0] if result else None
+    return selected_plan

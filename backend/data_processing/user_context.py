@@ -300,25 +300,7 @@ class UserContextManager:
             logger.error(f"Failed to set selected plan for {phone_number}: {e}")
             raise UserContextError(f"Failed to set selected plan: {e}")
     
-    @classmethod
-    def get_selected_plan(cls, phone_number: str) -> Optional[str]:
-        """
-        Retrieve the selected plan for the user from user_context.
-        Returns plan_id or None.
-        """
-        if not phone_number or not phone_number.strip():
-            raise ValueError("Phone number cannot be empty")
-        
-        try:
-            context = cls.get_user_context(phone_number)
-            selected_plan = context.get('selected_plan')
-            
-            logger.debug(f"Retrieved selected plan for {phone_number}: {selected_plan}")
-            return selected_plan
-            
-        except Exception as e:
-            logger.error(f"Failed to get selected plan for {phone_number}: {e}")
-            raise UserContextError(f"Failed to retrieve selected plan: {e}")
+    
     
     @classmethod
     def clear_user_context(cls, phone_number: str) -> bool:

@@ -10,6 +10,10 @@ import PaymentPage from './components/PaymentPage';
 import Tagline from './components/Tagline';
 import './App.css';
 
+window.addEventListener('load', () => {
+  localStorage.clear();
+});
+
 function App() {
   return (
     <Router>

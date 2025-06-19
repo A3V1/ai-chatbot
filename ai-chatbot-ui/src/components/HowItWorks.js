@@ -1,5 +1,9 @@
 import React from 'react';
 
+window.addEventListener('load', () => {
+  localStorage.clear();
+});
+
 function HowItWorks() {
   return (
     <section className="how-it-works">

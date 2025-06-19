@@ -175,30 +175,38 @@ async def chat_endpoint(request: ChatRequest):
         )
     return MessageResponse(response=bot_response, missing_fields=None)
 
-@app.get("/plan_details/{phone_number}")
-def get_plan_details(phone_number: str):
-    """
-    Fetch selected plan and amount for the user (for payment display).
-    """
-    from data_processing.user_context import get_selected_plan
-    from data_processing.mysql_connector import get_policy_premium
-    plan = get_selected_plan(phone_number)
-    amount = None
-    if plan:
-        amount = get_policy_premium(plan)
-    return {"plan": plan, "amount": amount}
+# @app.get("/plan_details/{phone_number}")
+# def get_plan_details(phone_number: str):
+#     """
+#     Fetch selected plan and amount for the user (for payment display).
+#     """
+#     from data_processing.mysql_connector import get_selected_plan
+#     from data_processing.mysql_connector import get_policy_premium
+#     plan = get_selected_plan(phone_number)
+#     amount = None
+#     if plan:
+#         amount = get_policy_premium(plan)
+#     return {"plan": plan, "amount": amount}
 
 @app.get("/api/payment-details")
 def api_payment_details(phone_number: str):
     """
     API endpoint to fetch selected plan and premium amount for payment page.
+    Adds debug logging for troubleshooting.
     """
-    from data_processing.user_context import get_selected_plan
+    from data_processing.mysql_connector import get_selected_plan
     from data_processing.mysql_connector import get_policy_premium
+    import logging
+    logging.basicConfig(level=logging.DEBUG)
+    logging.debug(f"Received payment-details request for phone_number: {phone_number}")
     selected_plan = get_selected_plan(phone_number)
+    logging.debug(f"Selected plan for {phone_number}: {selected_plan}")
     amount = None
     if selected_plan:
         amount = get_policy_premium(selected_plan)
+        logging.debug(f"Premium for plan '{selected_plan}': {amount}")
+    else:
+        logging.debug(f"No plan found for phone_number: {phone_number}")
     return {"selected_plan": selected_plan, "amount": amount}
 
 # Include payment-related endpoints from payments.py
