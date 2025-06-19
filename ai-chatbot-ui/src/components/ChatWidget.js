@@ -308,6 +308,37 @@ function ChatWidget() {
                 disabled={collectingUserInfo && !currentField}
               />
               <button className="footer-send-btn" onClick={handleSendMessage} disabled={collectingUserInfo && !currentField}>Send</button>
+              {/* File upload button */}
+              <input
+                type="file"
+                id="file-upload"
+                style={{ display: 'none' }}
+                onChange={e => {
+                  const file = e.target.files[0];
+                  if (file) {
+                    if (file.size > 2 * 1024 * 1024) {
+                      alert('File size exceeds 2MB limit.');
+                      e.target.value = '';
+                      setSelectedFile(null);
+                    } else {
+                      setSelectedFile(file);
+                    }
+                  }
+                }}
+              />
+              <button
+                className="footer-send-btn"
+                type="button"
+                onClick={() => document.getElementById('file-upload').click()}
+                style={{ marginLeft: 8 }}
+              >
+                Add File
+              </button>
+              {selectedFile && (
+                <span style={{ marginLeft: 8, fontSize: 12 }}>
+                  {selectedFile.name}
+                </span>
+              )}
             </div>
           )}
           {/* Payment Confirmation Modal */}
