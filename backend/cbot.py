@@ -146,123 +146,166 @@ class UserInputProcessor:
 class PromptTemplate:
     
     RAW_TEMPLATE = """
-You are an expert insurance advisor guiding users through: Recommendation -> Application -> Payment.
 
-PRIMARY GOAL: Lead conversations toward successful policy purchase and payment.
+You are an expert insurance advisor with a proven track record of helping customers find the perfect insurance coverage. Your mission is to guide users through a structured sales process: Recommendation → Details → Application → Payment.
 
-CONTEXT: {{ retrieved_context }}
-CONVERSATION STATE: {{ conversation_state }}
+=== CONTEXT & DATA ===
+Retrieved Insurance Information: {{ retrieved_context }}
 
-USER PROFILE:
-- Phone: {{ phone_number }}
-- Policy Interest: {{ interested_policy_type or 'Not specified' }}
-- Age: {{ age }} | Budget: {{ premium_budget }}
-- Coverage: {{ desired_coverage }} | Dependents: {{ has_dependents }}
-- Experience: {{ insurance_experience_level }}
+Current Conversation State: {{ conversation_state }}
 
-CHAT HISTORY: {{ chat_history }}
-CURRENT QUESTION: {{ question }}
+User Profile:
+• Phone: {{ phone_number }}
+• Age: {{ age }} years | Annual Budget: ₹{{ premium_budget }}
+• Desired Coverage: ₹{{ desired_coverage }}
+• Policy Interest: {{ interested_policy_type or 'General Insurance' }}
+• Dependents: {{ has_dependents }} | Experience: {{ insurance_experience_level }}
+• Payment Mode: {{ premium_payment_mode or 'Annual' }}
 
----
+Previous Conversation: {{ chat_history }}
 
-RESPONSE STRATEGY (Keep under 40 words):
+Current User Query: {{ question }}
 
-IF STATE = 'start':
-- Use user profile to recommend a policy based on their informations and requirements.
-- Format: "PolicyName covers ₹X, ₹Y/year. [Key benefit]. Would you like to apply?"
-- if requirements matches a policy recommend a policy if not recommend nearest policy which matches the requirements.
+=== RESPONSE GUIDELINES ===
 
-IF STATE = 'recommendation_given':
-- give details about the recommended policy.
-- If asked about brochure, provide URL and ask if they want to apply.
-- Don't repeat recommendations
-- Answer questions about the recommended policy
-- If no policy matches the requirement: "No policy matches your needs."
--when recommending a policy, always include:
-  - Coverage amount and premium
-  - Key benefits 
+**TONE & STYLE:**
+- Professional yet friendly and conversational
+- Confident and knowledgeable
+- Solution-oriented with urgency
+- Keep responses under 50 words unless providing detailed policy information
+- Use bullet points for policy features, paragraphs for conversation
 
-STEP 2 - BUILD INTEREST:
-- If asked about brochure: "Here's the brochure: {{ policy_brochure_url }}. This plan suits your profile perfectly. Want to apply?"
-- If asked about claims: "Claims via {{ claim_process }}, 24hr processing. Ready to secure your family's future?"
-- If asked about exclusions: "Exclusions: {{ exclusions }}. Still excellent coverage for your needs. Shall we proceed?"
+**CORE OBJECTIVE:** Every response must move the conversation toward policy purchase and payment completion.
 
-STEP 3 - CLOSE FOR APPLICATION:
-- Always end responses with application prompts:
-  - "Ready to apply and secure this rate?"
-  - "Shall we start your application?"
+=== STATE-BASED RESPONSE STRATEGY ===
 
-STEP 4 - PAYMENT TRANSITION:
-- When user shows interest: "Perfect! I'll start your application. You'll get confirmation shortly. Ready for payment?"
+**STATE: 'start'**
+GOAL: Analyze user profile and recommend the most suitable policy immediately.
 
-ALWAYS END WITH ACTION:
-Every response must include one of these:
-- "Want to apply?"
-- "Ready to proceed?"
-- "Shall we secure this for you?"
-- "Ready for payment?"
+Response Format:
+"Based on your profile ({{ age }} years, ₹{{ desired_coverage }} coverage, ₹{{ premium_budget }} budget), I recommend **[Policy Name]**.
 
-if user asks about payment:
-- "Redirecting to payment page for "policy name' ₹{{ amount }}. Ready to secure your policy?"
+Key highlights:
+• Coverage: ₹[amount]
+• Premium: ₹[amount]/year
+• [Top 2-3 benefits relevant to user]
 
----
+This perfectly matches your requirements. Would you like to see the complete details and proceed with the application?"
 
-### ✅ Example Conversation
+Policy Selection Logic:
+- Match user's interested_policy_type with available policies
+- Consider age, budget, and coverage requirements
+- If no exact match, recommend the closest suitable policy
+- Always explain why this policy suits their specific needs
 
-👤 USER PROFILE:
-- Phone: 9876543210  
-- Age: 34 | Budget: ₹15,000/year  
-- Coverage: ₹1 Cr | Dependents: Yes  
-- Interested Policy Type: Term Life  
-- Experience: Beginner  
+**STATE: 'recommendation_given'**
+GOAL: Provide compelling details and move toward application.
 
----
+For Policy Details Request:
+"**[Policy Name]** offers exceptional value for your profile:
 
-🟢 STATE: start  
-USER: "I want term insurance for 1 crore. Budget around 15k."  
-BOT: "X covers ₹1 Cr, ₹14,800/year. 100% claim settlement, includes terminal illness cover. Would you like to apply?"  
-fetch policy details from DB pinecone index
-➡️ STATE → recommendation_given
+✓ Coverage: ₹{{ desired_coverage }}
+✓ Premium: ₹[amount]/{{ premium_payment_mode }}
+✓ [Key benefit 1 - specific to user needs]
+✓ [Key benefit 2 - competitive advantage]
+✓ [Key benefit 3 - peace of mind factor]
 
----
+Special features for you:
+• [Personalized feature based on profile]
+• [Claim settlement record/network hospitals if health]
+• [Tax benefits if applicable]
 
-🟡 STATE: recommendation_given  
-USER: "Can you share the brochure?"  
-BOT: "Here's the brochure: https://insure.com/brochures/x.pdf. This plan suits your profile perfectly. Want to apply?"
-        fetch policy_brochure_url from DB
----
+Ready to secure this excellent rate? Shall we start your application?"
 
-🟠 STATE: showing_details  
-USER: "Yes, show me the benefits."  
-BOT:  
-"✓ ₹1 Cr coverage  
-✓ Terminal illness cover  
-✓ 24hr claim settlement  
-✓ ₹14,800/year  
+For Brochure Request:
+"Here's the detailed brochure: {{ policy_brochure_url }}
 
-Shall we start your application?"  
-➡️ STATE → showing_details
+This policy is specifically designed for someone with your profile - {{ age }} years old, looking for ₹{{ desired_coverage }} coverage within ₹{{ premium_budget }} budget. 
 
+Ready to apply and lock in this rate today?"
 
-🔵 STATE: awaiting_application_confirmation  
-USER: "Okay, proceed."  
-BOT: "Perfect! Starting your application now. You'll get confirmation shortly. Ready to make payment?"  
-➡️ STATE → awaiting_payment_confirmation
+**STATE: 'showing_details'**
+GOAL: Address concerns and close for application.
 
+For Questions about Policy:
+- Answer specifically using retrieved_context
+- Always relate benefits back to user's personal situation
+- End with application close: "This addresses your concern perfectly. Ready to apply?"
 
+For Claims Questions:
+"Claims are processed within 24-48 hours with {{ claim_process or '95%+ approval rate' }}. Our network includes {{ hospital_count or 'major' }} hospitals nationwide. This ensures you get hassle-free treatment when needed. Shall we secure this coverage for you today?"
 
-🔴 STATE: awaiting_payment_confirmation  
-USER: "Yes, go ahead."  
-BOT:
+For Exclusions Questions:
+"The exclusions are standard: {{ exclusions or 'pre-existing diseases (2-year waiting), cosmetic procedures, and experimental treatments' }}. However, this policy covers all essential medical needs for your family. The benefits far outweigh these standard exclusions. Ready to proceed?"
 
+**STATE: 'awaiting_application_confirmation'**
+GOAL: Confirm application and transition to payment.
+
+For Yes/Affirmative:
+"Excellent choice! I'm initiating your application for **[Policy Name]** with ₹{{ desired_coverage }} coverage at ₹[premium]/{{ premium_payment_mode }}.
+
+You'll receive confirmation within 2-3 minutes via SMS and email. 
+
+Ready to complete the payment and activate your policy immediately?"
+
+For No/Hesitation:
+"I understand you might need more clarity. What specific aspect would you like me to explain further? I'm here to ensure you make the best decision for your family's security."
+
+**STATE: 'awaiting_payment_confirmation'**
+GOAL: Complete the sale with payment.
+
+For Yes/Affirmative:
+Return PaymentResponse object:
+{
   "action": "redirect_to_payment",
-  "plan": "x",
-  "amount": 14800,
-  "message": "Redirecting to payment page..."
-  
-  you have vehicle insurance with to recommend too.
+  "plan": "[Selected Policy Name]",
+  "amount": [Premium Amount],
+  "message": "Redirecting to secure payment gateway for [Policy Name] - ₹[amount]. Your policy will be active immediately after payment!"
+}
 
+For Hesitation:
+"Payment is 100% secure through our encrypted gateway. You can pay via UPI, card, or net banking. Once paid, your policy is active immediately with instant digital certificate. 
 
+Your family's protection shouldn't wait. Ready to complete this in the next 2 minutes?"
+
+**STATE: 'payment_initiated'**
+GOAL: Provide assurance and support.
+
+"Your payment is being processed securely. You'll receive policy documents within 5 minutes via email and SMS.
+
+Thank you for choosing us for your family's protection! Is there anything else I can help you with today?"
+
+=== RESPONSE ENHANCEMENT RULES ===
+
+**Always Include:**
+1. **Personalization**: Reference user's age, budget, or family situation
+2. **Urgency**: "Lock in this rate", "Secure today", "Don't wait"
+3. **Social Proof**: "95% customer satisfaction", "Trusted by millions"
+4. **Clear Next Step**: Specific call-to-action in every response
+
+**Never Do:**
+- Give generic responses without user context
+- Provide multiple policy options (creates confusion)
+- Use technical jargon without explanation
+- End responses without a clear call-to-action
+- Repeat the same information unnecessarily
+
+**Objection Handling:**
+- "I need to think about it" → "I understand this is important. What specific aspect would help you decide today? I can address any concerns right now."
+- "It's expensive" → "Let's break this down: ₹[amount] per month secures ₹{{ desired_coverage }} for your family. That's less than [relatable daily expense]. Can you put a price on your family's security?"
+- "I'll compare with others" → "I've already analyzed the market for your specific needs. This offers the best value with [specific advantage]. Let's secure this rate before it changes."
+
+=== QUALITY CONTROL ===
+
+Before responding, ensure:
+✓ Response directly addresses the user's current state and query
+✓ Includes personalized elements from user profile
+✓ Has a clear, compelling call-to-action
+✓ Maintains sales momentum toward payment
+✓ Uses appropriate tone for the conversation stage
+✓ Stays within word limit unless providing detailed policy info
+
+Remember: Your goal is not just to inform, but to guide the user to a purchase decision with confidence and urgency while maintaining trust and professionalism.
 """
 
 
@@ -275,11 +318,21 @@ class ChatBot:
     - Generating responses with LLM
     - Persisting context after each message
     """
-    def __init__(self, phone_number: str):
+    def __init__(self, phone_number: str, initial_context: Optional[Dict[str, Any]] = None, initial_chat_history: Optional[List[Dict[str, Any]]] = None):
         self.phone_number = phone_number
         self.config = ChatBotConfig()
         self._initialize_components()
-        self._load_user_data()        
+        if initial_context is not None and initial_chat_history is not None:
+            self.user_context = initial_context
+            self.user_info = get_user_info(self.phone_number) or {} # Always load latest user_info
+            for msg in initial_chat_history:
+                if msg.get("type") == "human":
+                    self.memory.chat_memory.add_user_message(msg["content"])
+                elif msg.get("type") == "ai":
+                    self.memory.chat_memory.add_ai_message(msg["content"])
+            logger.info(f"ChatBot initialized with provided context for phone: {self.phone_number}")
+        else:
+            self._load_user_data()        
 
     def _initialize_components(self) -> None:
         """Initialize LLM, vector store, retriever, and memory buffer."""
@@ -466,6 +519,9 @@ class ChatBot:
                 response = "Details not available. Please ask about other policies or provide more details."
             self.memory.chat_memory.add_ai_message(response)
             return response
+        elif UserInputProcessor.contains_keywords(query, UserInputProcessor.BROCHURE_KEYWORDS):
+            # If user asks for details/brochure, handle it directly
+            return self._handle_brochure_request(query)
         return self._generate_llm_response(query)
     
     def _handle_brochure_request(self, query: str) -> str:
@@ -510,8 +566,16 @@ class ChatBot:
         - Invokes the LLM and returns its response
         """
         try:
+            # Enhance query with interested_policy_type for better semantic search
+            interested_policy_type = self.user_info.get('interested_policy_type') or self.user_context.get('interested_policy_type')
+            search_query = query
+            if interested_policy_type and "recommend" in query.lower():
+                search_query = f"{interested_policy_type} insurance policy recommendation {query}"
+            elif interested_policy_type:
+                search_query = f"{interested_policy_type} insurance {query}"
+
             retrieved_docs = self.vectorstore.similarity_search(
-                query, k=self.config.similarity_search_k
+                search_query, k=self.config.similarity_search_k
             )
             retrieved_context = "\n---\n".join([doc.page_content for doc in retrieved_docs])
             
@@ -591,6 +655,8 @@ class ChatBot:
                 result = self._handle_application_confirmation(query)
             elif state == ConversationState.RECOMMENDATION_GIVEN:
                 result = self._handle_recommendation_given(query)
+            elif (state == ConversationState.SHOWING_DETAILS and UserInputProcessor.contains_keywords(query, UserInputProcessor.QUESTION_KEYWORDS)):
+                result = self._generate_llm_response(query)
             elif UserInputProcessor.contains_keywords(query, UserInputProcessor.APPLICATION_KEYWORDS):
                 result = self._handle_application_request(query)
             elif UserInputProcessor.contains_keywords(query, UserInputProcessor.PAYMENT_KEYWORDS):
@@ -599,9 +665,6 @@ class ChatBot:
                 result = self._handle_brochure_request(query)
             elif state == ConversationState.START:
                 self.set_conversation_state(ConversationState.RECOMMENDATION_GIVEN)
-                result = self._generate_llm_response(query)
-            elif (state in [ConversationState.RECOMMENDATION_GIVEN, ConversationState.SHOWING_DETAILS] and
-                  UserInputProcessor.contains_keywords(query, UserInputProcessor.QUESTION_KEYWORDS)):
                 result = self._generate_llm_response(query)
             else:
                 response = "I'm here to help with your insurance needs. Ready to apply or have specific questions?"
@@ -624,7 +687,6 @@ class UserInfoManager:
     - Creates new user entries
     """
     REQUIRED_FIELDS = [
-        ("interested_policy_type", "What type of insurance are you interested in?"),
         ("age", "What's your age?"),
         ("desired_coverage", "What is the coverage amount you are looking for?"),
         ("premium_budget", "What is your budget for annual premium?"),
@@ -645,7 +707,11 @@ class UserInfoManager:
     
     @classmethod
     def update_user_info(cls, phone_number: str, field: str, value: str) -> bool:
-        """Update user information in database"""
+        """Update user information in database. Only allow fields in REQUIRED_FIELDS."""
+        allowed_fields = {f for f, _ in cls.REQUIRED_FIELDS}
+        if field not in allowed_fields:
+            logger.error(f"Attempted to update disallowed field: {field}")
+            return False
         try:
             conn = get_mysql_connection()
             cursor = conn.cursor()
@@ -697,6 +763,175 @@ def update_user_info(phone_number: str, field: str, value: str) -> bool:
     return UserInfoManager.update_user_info(phone_number, field, value)
 
 
+def ask_policy_specific_questions(phone_number, interested_policy_type, chat_history):
+    """Return policy-type-specific questions for UI/API. No CLI input."""
+    POLICY_TYPE_QUESTIONS = {
+        "term life": [
+            ("term_duration_years", "For how many years do you want the term life coverage?"),
+            ("health_conditions", "Do you have any existing health conditions? (yes/no, specify if yes)"),
+            ("smoker_status", "Are you a smoker? (yes/no)")
+        ],
+        "health": [
+            ("pre_existing_diseases", "Do you have any pre-existing diseases? (yes/no, specify if yes)"),
+            ("hospital_preference", "Do you have a preferred hospital or hospital network?"),
+            ("maternity_need", "Do you need maternity coverage? (yes/no)")
+        ],
+        "vehicle": [
+            ("vehicle_type", "What type of vehicle do you want to insure? (Car/Bike/Other)"),
+            ("vehicle_year", "What is the year of manufacture of your vehicle?"),
+            ("idv_preference", "Do you have a preferred Insured Declared Value (IDV)? (yes/no, specify if yes)")
+        ],
+        "investment": [
+            ("investment_horizon", "What is your investment horizon (in years)?"),
+            ("risk_appetite", "What is your risk appetite? (Low/Medium/High)"),
+            ("expected_returns", "What are your expected returns or goals?")
+        ],
+        "home": [
+            ("property_type", "What type of property do you want to insure? (Apartment/House/Other)"),
+            ("property_value", "What is the approximate value of your property?"),
+            ("natural_disaster_cover", "Do you want natural disaster coverage? (yes/no)")
+        ]
+    }
+    key = (interested_policy_type or '').strip().lower()
+    questions = POLICY_TYPE_QUESTIONS.get(key, [])
+    # Return as list of dicts for UI/API
+    return [{"field": field, "question": question} for field, question in questions]
+
+
+def extract_policy_type_and_answers(chat_history):
+    """
+    Extracts the latest 'interested_policy_type' and 'policy_specific_answers' from chat_history.
+    Returns a tuple: (interested_policy_type, policy_specific_answers_dict or None)
+    """
+    interested_policy_type = None
+    policy_specific_answers = None
+    for msg in chat_history:
+        if msg.get("type") == "interested_policy_type":
+            interested_policy_type = msg.get("content")
+        elif msg.get("type") == "policy_specific_answers":
+            policy_specific_answers = msg.get("content")
+    return interested_policy_type, policy_specific_answers
+
+
+# --- API/Frontend integration helpers ---
+
+def get_policy_specific_questions(interested_policy_type: str) -> list:
+    """
+    Returns a list of dicts: [{"field": ..., "question": ...}] for the given policy type.
+    For use by API/UI to fetch questions dynamically.
+    """
+    POLICY_TYPE_QUESTIONS = {
+        "term life": [
+            {"field": "term_duration_years", "question": "For how many years do you want the term life coverage?"},
+            {"field": "health_conditions", "question": "Do you have any existing health conditions? (yes/no, specify if yes)"},
+            {"field": "smoker_status", "question": "Are you a smoker? (yes/no)"}
+        ],
+        "health": [
+            {"field": "pre_existing_diseases", "question": "Do you have any pre-existing diseases? (yes/no, specify if yes)"},
+            {"field": "hospital_preference", "question": "Do you have a preferred hospital or hospital network?"},
+            {"field": "maternity_need", "question": "Do you need maternity coverage? (yes/no)"}
+        ],
+        "vehicle": [
+            {"field": "vehicle_type", "question": "What type of vehicle do you want to insure? (Car/Bike/Other)"},
+            {"field": "vehicle_year", "question": "What is the year of manufacture of your vehicle?"},
+            {"field": "idv_preference", "question": "Do you have a preferred Insured Declared Value (IDV)? (yes/no, specify if yes)"}
+        ],
+        "investment": [
+            {"field": "investment_horizon", "question": "What is your investment horizon (in years)?"},
+            {"field": "risk_appetite", "question": "What is your risk appetite? (Low/Medium/High)"},
+            {"field": "expected_returns", "question": "What are your expected returns or goals?"}
+        ],
+        "home": [
+            {"field": "property_type", "question": "What type of property do you want to insure? (Apartment/House/Other)"},
+            {"field": "property_value", "question": "What is the approximate value of your property?"},
+            {"field": "natural_disaster_cover", "question": "Do you want natural disaster coverage? (yes/no)"}
+        ]
+    }
+    key = (interested_policy_type or '').strip().lower()
+    return POLICY_TYPE_QUESTIONS.get(key, [])
+
+
+def save_policy_specific_answers(phone_number: str, answers: dict):
+    """
+    Save policy-specific answers to chat_history for a user (for API/UI use).
+    Appends new policy_specific_answers without overwriting old entries.
+    """
+    context, chat_history = load_user_data(phone_number)
+    chat_history = chat_history or []
+
+    # Append new policy-specific answers with timestamp
+    chat_history.append({
+        "type": "policy_specific_answers",
+        "content": answers,
+    })
+
+    context_summary = context.get("context_summary") if context else ""
+    save_user_data(phone_number, context_summary, chat_history)
+    return True
+
+
+
+def save_policy_specific_qa(phone_number: str, interested_policy_type: str, answers: dict):
+    """
+    Append both the questions and user's answers for a specific policy type to chat_history.
+    This does NOT remove previous policy_specific_answers entries.
+    """
+    context, chat_history = load_user_data(phone_number)
+    chat_history = chat_history or []
+
+    # Get the actual questions asked
+    questions = get_policy_specific_questions(interested_policy_type)
+    
+    # Convert to full Q&A form
+    qa_list = []
+    for q in questions:
+        field = q.get("field")
+        question = q.get("question")
+        answer = answers.get(field)
+        qa_list.append({"field": field, "question": question, "answer": answer})
+
+    # Append as a new entry in history (do not remove previous ones)
+    chat_history.append({
+        "type": "policy_specific_answers",
+        "qa": qa_list
+    })
+
+    context_summary = context.get("context_summary") if context else ""
+    save_user_data(phone_number, context_summary, chat_history)
+    return True
+
+
+def get_interested_policy_type(phone_number: str) -> str:
+    """
+    Returns the interested_policy_type for a user from chat_history, or an empty string if not set.
+    """
+    _, chat_history = load_user_data(phone_number)
+    chat_history = chat_history or []
+    for msg in reversed(chat_history):
+        if msg.get("type") == "interested_policy_type":
+            return msg.get("content")
+    return ""
+
+
+def save_interested_policy_type(phone_number: str, interested_policy_type: str):
+    """
+    Save interested_policy_type for a user (for API/UI use).
+    Save it in chat_history, not in user_info table.
+    """
+    # Load chat history
+    context, chat_history = load_user_data(phone_number)
+    chat_history = chat_history or []
+    # # Remove old interested_policy_type
+    # chat_history = [msg for msg in chat_history if msg.get("type") != "interested_policy_type"]
+    chat_history.append({
+        "type": "interested_policy_type",
+        "content": interested_policy_type
+    })
+    context_summary = context.get("context_summary") if context else ""
+    save_user_data(phone_number, context_summary, chat_history)
+    return True
+
+
 def main():
     """Main function to run the chatbot"""
     print("=== Insurance Chatbot ===")
@@ -720,35 +955,69 @@ def main():
         missing_fields = UserInfoManager.get_missing_fields(user_info)
         if not missing_fields:
             break
-        
         for field, question in missing_fields:
             value = input(question + " ").strip()
             if value.lower() in ["exit", "quit"]:
                 return
-            
             if not UserInfoManager.update_user_info(phone_number, field, value):
                 print(f"Failed to update {field}. Please try again.")
-            else:             continue
+            else:
+                continue
         user_info = get_user_info(phone_number)
+
+    # # Ask for interested_policy_type if not present
+    # interested_policy_type = user_info.get("interested_policy_type")
+    # if not interested_policy_type:
+    #     interested_policy_type = input("What type of insurance are you looking for? Health, Term Life, Investment, Vehicle, or Home? ").strip()
+    #     if interested_policy_type.lower() in ["exit", "quit"]:
+    #         return
     
+    interested_policy_type = get_interested_policy_type(phone_number)
+    if not interested_policy_type:
+        interested_policy_type = input("What type of insurance are you looking for? Health, Term Life, Investment, Vehicle, or Home? ").strip()
+        if interested_policy_type.lower() in ["exit", "quit"]:
+            return
+        # Save the interested policy type
+        save_interested_policy_type(phone_number, interested_policy_type)
+
+    # Load chat history from DB (or start new)
+    context, chat_history = load_user_data(phone_number)
+    chat_history = chat_history or []
+
+    # Only remove old policy_specific_answers, but keep all other entries (including interested_policy_type)
+    chat_history = [msg for msg in chat_history if msg.get("type") != "policy_specific_answers"]
+
+    # Add policy-specific questions if needed (but do not replace the whole chat_history)
+    policy_questions = ask_policy_specific_questions(phone_number, interested_policy_type, [])
+    if policy_questions:
+        chat_history.extend(policy_questions)
+
+    # Save updated chat_history to DB
+    context_summary = context.get("context_summary") if context else ""
+    save_user_data(phone_number, context_summary, chat_history)
+
     # Start chat
     print("\n=== Chat Started ===")
     print("Type 'exit' or 'quit' to end the conversation.\n")
-    
     try:
         bot = ChatBot(phone_number)
-        
+        # Immediately recommend a policy after collecting all info
+        initial_recommendation = bot.ask("recommend a policy for me")
+        if isinstance(initial_recommendation, PaymentResponse):
+            print(f"Bot: {initial_recommendation.message}")
+            print(f"Action: {initial_recommendation.action}")
+            print(f"Plan: {initial_recommendation.plan}")
+            print(f"Amount: ₹{initial_recommendation.amount}")
+        else:
+            print(f"Bot: {initial_recommendation}")
         while True:
             user_input = input("User: ").strip()
             if user_input.lower() in ["exit", "quit"]:
                 print("Thank you for using our insurance chatbot!")
                 break
-            
             if not user_input:
                 continue
-            
             response = bot.ask(user_input)
-            
             if isinstance(response, PaymentResponse):
                 print(f"Bot: {response.message}")
                 print(f"Action: {response.action}")
@@ -756,7 +1025,6 @@ def main():
                 print(f"Amount: ₹{response.amount}")
             else:
                 print(f"Bot: {response}")
-    
     except KeyboardInterrupt:
         print("\n\nChat interrupted by user.")
     except Exception as e:

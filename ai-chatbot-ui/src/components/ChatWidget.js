@@ -91,34 +91,82 @@ function ChatWidget() {
     const userMsg = { text: currentMessage, sender: 'user' };
     setMessages(prev => [...prev, userMsg]);
     setCurrentMessage('');
+    // List of profile fields allowed in user_info table
+    const profileFields = [
+      'age',
+      'desired_coverage',
+      'premium_budget',
+      'premium_payment_mode',
+      'preferred_add_ons',
+      'has_dependents',
+      'policy_duration_years',
+      'insurance_experience_level'
+    ];
     if (collectingUserInfo && currentField) {
-      // Send user info answer
-      try {
-        const response = await fetch('http://localhost:8000/update_user_info', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            phone_number: phoneNumber,
-            field: currentField.field,
-            value: currentMessage
-          }),
-        });
-        const data = await response.json();
-        const remainingFields = data.missing_fields || [];
-        if (remainingFields.length > 0) {
-          setCurrentField(remainingFields[0]);
-          setMessages(prev => [...prev, { text: remainingFields[0].question, sender: 'bot' }]);
-        } else {
-          setCurrentField(null);
-          setCollectingUserInfo(false);
-          // Now send the user's original message to the chat endpoint
-          // Use the last user message in the messages array
-          const lastUserMsg = userMsg.text;
-          try {
+      if (profileFields.includes(currentField.field)) {
+        // Send user info answer to /update_user_info
+        try {
+          const response = await fetch('http://localhost:8000/update_user_info', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              phone_number: phoneNumber,
+              field: currentField.field,
+              value: userMsg.text
+            }),
+          });
+          const data = await response.json();
+          const remainingFields = data.missing_fields || [];
+          if (remainingFields.length > 0) {
+            setCurrentField(remainingFields[0]);
+            setMessages(prev => [...prev, { text: remainingFields[0].question, sender: 'bot' }]);
+          } else {
+            setCurrentField(null);
+            setCollectingUserInfo(false);
+            // Now send the user's original message to the chat endpoint
+            const lastUserMsg = userMsg.text;
+            try {
+              const chatResponse = await fetch('http://localhost:8000/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: lastUserMsg, phone_number: phoneNumber }),
+              });
+              const chatData = await chatResponse.json();
+              if (chatData.missing_fields && chatData.missing_fields.length > 0) {
+                setCollectingUserInfo(true);
+                setCurrentField(chatData.missing_fields[0]);
+                setMessages(prev => [...prev, { text: chatData.missing_fields[0].question, sender: 'bot' }]);
+              } else {
+                setMessages(prev => [...prev, { text: chatData.response, sender: 'bot' }]);
+              }
+            } catch (error) {
+              setMessages(prev => [...prev, {
+                text: 'Sorry, there was an error connecting to the chatbot.',
+                sender: 'bot'
+              }]);
+            }
+          }
+        } catch (error) {
+          setMessages(prev => [...prev, { text: 'Error updating info. Try again.', sender: 'bot' }]);
+        }
+      } else if (currentField.field === 'interested_policy_type') {
+        // Handle interested_policy_type separately
+        try {
+          const response = await fetch('http://localhost:8000/save_interested_policy_type', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              phone_number: phoneNumber,
+              interested_policy_type: userMsg.text
+            }),
+          });
+          const data = await response.json();
+          if (data.success) {
+            // After saving interested_policy_type, send the original message to chat endpoint
             const chatResponse = await fetch('http://localhost:8000/chat', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ message: lastUserMsg, phone_number: phoneNumber }),
+              body: JSON.stringify({ message: userMsg.text, phone_number: phoneNumber }),
             });
             const chatData = await chatResponse.json();
             if (chatData.missing_fields && chatData.missing_fields.length > 0) {
@@ -126,17 +174,47 @@ function ChatWidget() {
               setCurrentField(chatData.missing_fields[0]);
               setMessages(prev => [...prev, { text: chatData.missing_fields[0].question, sender: 'bot' }]);
             } else {
+              setCurrentField(null);
+              setCollectingUserInfo(false);
               setMessages(prev => [...prev, { text: chatData.response, sender: 'bot' }]);
             }
-          } catch (error) {
-            setMessages(prev => [...prev, {
-              text: 'Sorry, there was an error connecting to the chatbot.',
-              sender: 'bot'
-            }]);
+          } else {
+            setMessages(prev => [...prev, { text: 'Error saving interested policy type. Try again.', sender: 'bot' }]);
           }
+        } catch (error) {
+          setMessages(prev => [...prev, { text: 'Error saving interested policy type. Try again.', sender: 'bot' }]);
         }
-      } catch (error) {
-        setMessages(prev => [...prev, { text: 'Error updating info. Try again.', sender: 'bot' }]);
+      } else {
+        // Policy-specific answer: send to /save_policy_specific_answers
+        try {
+          const response = await fetch('http://localhost:8000/save_policy_specific_answers', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              phone_number: phoneNumber,
+              answers: { [currentField.field]: userMsg.text }
+            }),
+          });
+          // After saving, ask next question or continue chat
+          // For simplicity, fetch next missing field from /chat endpoint
+          const chatResponse = await fetch('http://localhost:8000/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: '', phone_number: phoneNumber }),
+          });
+          const chatData = await chatResponse.json();
+          if (chatData.missing_fields && chatData.missing_fields.length > 0) {
+            setCollectingUserInfo(true);
+            setCurrentField(chatData.missing_fields[0]);
+            setMessages(prev => [...prev, { text: chatData.missing_fields[0].question, sender: 'bot' }]);
+          } else {
+            setCurrentField(null);
+            setCollectingUserInfo(false);
+            setMessages(prev => [...prev, { text: chatData.response, sender: 'bot' }]);
+          }
+        } catch (error) {
+          setMessages(prev => [...prev, { text: 'Error saving policy-specific answer. Try again.', sender: 'bot' }]);
+        }
       }
     } else {
       // Normal chat

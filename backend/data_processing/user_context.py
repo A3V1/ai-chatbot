@@ -213,18 +213,27 @@ class UserContextManager:
     ) -> bool:
         """
         Save context summary and chat history for the user.
+        Always appends to existing chat history instead of overwriting.
         Returns True if save successful.
         """
         if not phone_number or not phone_number.strip():
             raise ValueError("Phone number cannot be empty")
-        
         try:
             updates = {"context_summary": context_summary}
             if chat_history is not None:
-                updates["chat_history"] = chat_history
-            
+                # Load existing chat history and append new messages
+                existing_context = cls.get_user_context(phone_number)
+                existing_history = existing_context.get('chat_history', [])
+                if not isinstance(existing_history, list):
+                    existing_history = []
+                # Only append messages that are not already present (avoid duplicates)
+                # This assumes each message is a dict and can be compared
+                combined_history = existing_history.copy()
+                for msg in chat_history:
+                    if msg not in combined_history:
+                        combined_history.append(msg)
+                updates["chat_history"] = combined_history
             return cls.update_user_context(phone_number, updates)
-            
         except Exception as e:
             logger.error(f"Failed to save user data for {phone_number}: {e}")
             raise UserContextError(f"Failed to save user data: {e}")

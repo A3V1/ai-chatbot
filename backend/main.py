@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
-from cbot import ChatBot, get_missing_user_info_fields, update_user_info, get_user_info
+from cbot import ChatBot, get_missing_user_info_fields, update_user_info, get_user_info, get_policy_specific_questions, save_policy_specific_qa, get_interested_policy_type, save_interested_policy_type
 from data_processing.mysql_connector import get_mysql_connection
 from payments import router as payments_router
 
@@ -60,6 +60,14 @@ class UserInfoUpdate(BaseModel):
     field: str
     value: str
 
+class PolicySpecificAnswersRequest(BaseModel):
+    phone_number: str
+    answers: dict
+
+class InterestedPolicyTypeRequest(BaseModel):
+    phone_number: str
+    interested_policy_type: str
+
 # =============================
 # API Endpoints
 # =============================
@@ -98,8 +106,34 @@ async def update_user_info_endpoint(update_request: UserInfoUpdate):
     """
     Update a single user info field in user_info table.
     Returns updated list of missing fields.
+    Prevents updating interested_policy_type (must use /save_interested_policy_type).
+    Rejects fields not present in user_info schema.
     """
-    # Simply update the field without any validation
+    if update_request.field == "interested_policy_type":
+        return {
+            "success": False,
+            "error": "interested_policy_type must be set using /save_interested_policy_type, not /update_user_info."
+        }
+    # Only allow fields that are in the user_info table
+    allowed_fields = set([
+        "age",
+        "desired_coverage",
+        "premium_budget",
+        "premium_payment_mode",
+        "preferred_add_ons",
+        "has_dependents",
+        "policy_duration_years",
+        "insurance_experience_level"
+    ])
+    if update_request.field not in allowed_fields:
+        # Log and return error, do NOT call update_user_info at all
+        import logging
+        logging.error(f"Attempted to update disallowed field: {update_request.field}")
+        return {
+            "success": False,
+            "error": f"Field '{update_request.field}' is not allowed to be updated in user_info. Use the appropriate endpoint for policy-specific answers."
+        }
+    # Only update allowed fields
     update_user_info(
         update_request.phone_number,
         update_request.field,
@@ -130,13 +164,19 @@ async def chat_endpoint(request: ChatRequest):
     # Handle exit message
     if user_message.lower() == 'exit':
         # Save summary and chat history on exit
-        from data_processing.user_context import save_user_data
+        from data_processing.user_context import save_user_data, load_user_data
         bot = ChatBot(phone_number)
         chat_history_to_save = []
         for msg in bot.memory.chat_memory.messages:
             chat_history_to_save.append({"type": msg.type, "content": msg.content})
         current_user_context = bot.user_context.get('context_summary', '')
-        save_user_data(phone_number, current_user_context, chat_history_to_save)
+        # Load existing chat history and append new messages
+        _, existing_history = load_user_data(phone_number)
+        combined_history = existing_history.copy()
+        for msg in chat_history_to_save:
+            if msg not in combined_history:
+                combined_history.append(msg)
+        save_user_data(phone_number, current_user_context, combined_history)
         return MessageResponse(
             response="Goodbye! Chat session ended.",
             missing_fields=None
@@ -145,15 +185,73 @@ async def chat_endpoint(request: ChatRequest):
     # Check for missing fields but don't validate their content
     user_info = get_user_info(phone_number)
     missing_fields = get_missing_user_info_fields(user_info)
-    
-    if missing_fields:
+
+    # Check for interested_policy_type using chat_history (not user_info)
+    interested_policy_type = get_interested_policy_type(phone_number)
+    policy_type_map = {
+        "health": "Health",
+        "term": "Term Life",
+        "term life": "Term Life",
+        "investment": "Investment",
+        "vehicle": "Vehicle",
+        "home": "Home"
+    }
+    user_policy_type = user_message.strip().lower()
+    mapped_policy_type = policy_type_map.get(user_policy_type)
+    if mapped_policy_type:
+        save_interested_policy_type(phone_number, mapped_policy_type)
+        # Reload interested_policy_type and chat_history after saving
+        interested_policy_type = get_interested_policy_type(phone_number)
+        from data_processing.user_context import load_user_data
+        context, chat_history = load_user_data(phone_number)
+    elif not interested_policy_type: # Only ask if no policy type is set yet
         return MessageResponse(
-            response="Please provide the required information to continue.",
-            missing_fields=[{"field": field, "question": question} for field, question in missing_fields]
+            response="What type of insurance are you looking for? Health, Term Life, Investment, Vehicle, or Home?",
+            missing_fields=[{"field": "interested_policy_type", "question": "What type of insurance are you looking for? Health, Term Life, Investment, Vehicle, or Home?"}]
+        )
+
+    # Check for policy-specific answers in chat_history only
+    from cbot import get_policy_specific_questions
+    from data_processing.user_context import load_user_data
+    context, chat_history = load_user_data(phone_number)
+    policy_questions = get_policy_specific_questions(interested_policy_type)
+    # Gather all answered fields from chat_history
+    answered_fields = set()
+    for msg in (chat_history or []):
+        if msg.get("type") == "policy_specific_answers":
+            qa = msg.get("qa")
+            if qa and isinstance(qa, list):
+                for item in qa:
+                    if item.get("field") and item.get("answer") not in [None, ""]:
+                        answered_fields.add(item["field"])
+            # Also support old format: {field: value}
+            content = msg.get("content")
+            if content and isinstance(content, dict):
+                for k, v in content.items():
+                    if v not in [None, ""]:
+                        answered_fields.add(k)
+    # Find missing policy-specific fields
+    missing_policy_fields = [q for q in policy_questions if q["field"] not in answered_fields]
+    if missing_policy_fields:
+        return MessageResponse(
+            response="Please answer the following questions to help us recommend the best policy.",
+            missing_fields=missing_policy_fields
         )
     
-    bot = ChatBot(phone_number)
-    bot_response = bot.ask(user_message)
+    # If all user info and policy-specific questions are answered, trigger a recommendation
+    if not missing_fields and not missing_policy_fields and interested_policy_type:
+        # Override user_message to force a recommendation
+        user_message_for_bot = "recommend a policy for me"
+        # Set info_taken to True in user_context
+        from data_processing.user_context import update_user_context
+        update_user_context(phone_number, {'info_taken': True})
+    else:
+        user_message_for_bot = user_message
+    
+    # Pass the loaded context and chat_history to the ChatBot constructor
+    bot = ChatBot(phone_number, initial_context=context, initial_chat_history=chat_history)
+    bot_response = bot.ask(user_message_for_bot)
+    
     # If bot_response is a PaymentResponse, unpack fields
     from cbot import PaymentResponse
     if isinstance(bot_response, PaymentResponse):
@@ -208,6 +306,62 @@ def api_payment_details(phone_number: str):
     else:
         logging.debug(f"No plan found for phone_number: {phone_number}")
     return {"selected_plan": selected_plan, "amount": amount}
+
+@app.get("/policy_specific_questions")
+def api_policy_specific_questions(interested_policy_type: str):
+    """
+    API endpoint to fetch policy-type-specific questions for the UI.
+    """
+    return {"questions": get_policy_specific_questions(interested_policy_type)}
+
+@app.post("/save_policy_specific_answers")
+def api_save_policy_specific_answers(request: PolicySpecificAnswersRequest):
+    """
+    API endpoint to save policy-type-specific answers from the UI.
+    Ensures chat_history is updated in user_context.
+    Now stores both questions and answers as Q&A pairs in chat history.
+    After saving, returns the next missing question if any, else success.
+    """
+    # Use save_policy_specific_qa to store both questions and answers
+    # Need to get interested_policy_type for this user
+    interested_policy_type = get_interested_policy_type(request.phone_number)
+    save_policy_specific_qa(request.phone_number, interested_policy_type, request.answers)
+    # After saving, check for next missing policy-specific field
+    from cbot import get_policy_specific_questions
+    from data_processing.user_context import load_user_data
+    context, chat_history = load_user_data(request.phone_number)
+    policy_questions = get_policy_specific_questions(interested_policy_type)
+    answered_fields = set()
+    for msg in (chat_history or []):
+        if msg.get("type") == "policy_specific_answers":
+            qa = msg.get("qa")
+            if qa and isinstance(qa, list):
+                for item in qa:
+                    if item.get("field"):
+                        answered_fields.add(item["field"])
+            content = msg.get("content")
+            if content and isinstance(content, dict):
+                for k in content.keys():
+                    answered_fields.add(k)
+    missing_policy_fields = [q for q in policy_questions if q["field"] not in answered_fields]
+    if missing_policy_fields:
+        return {"success": True, "next_question": missing_policy_fields[0]}
+    return {"success": True}
+
+@app.get("/get_interested_policy_type")
+def api_get_interested_policy_type(phone_number: str):
+    """
+    API endpoint to get the interested_policy_type for a user.
+    """
+    return {"interested_policy_type": get_interested_policy_type(phone_number)}
+
+@app.post("/save_interested_policy_type")
+def api_save_interested_policy_type(request: InterestedPolicyTypeRequest):
+    """
+    API endpoint to save/update the interested_policy_type for a user.
+    """
+    save_interested_policy_type(request.phone_number, request.interested_policy_type)
+    return {"success": True}
 
 # Include payment-related endpoints from payments.py
 app.include_router(payments_router)
