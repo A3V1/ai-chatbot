@@ -1,11 +1,3 @@
-"""
-main.py - FastAPI API Layer for AI Insurance Chatbot
----------------------------------------------------
-- Exposes REST endpoints for chatbot interaction, user info, and payments
-- Handles user initialization, info update, chat, and plan details
-- Delegates business logic to cbot.py and user_context.py
-- Ensures context-aware, persistent, and personalized conversations
-"""
 
 import uvicorn
 from fastapi import FastAPI
@@ -32,10 +24,6 @@ app.add_middleware(
 # =============================
 # Pydantic Models for Request/Response
 # =============================
-class MessageRequest(BaseModel):
-    """Request model for a simple message (not used in main chat)."""
-    message: str
-
 class MessageResponse(BaseModel):
     """
     Response model for chat endpoint.
@@ -151,13 +139,6 @@ async def update_user_info_endpoint(update_request: UserInfoUpdate):
 
 @app.post("/chat", response_model=MessageResponse)
 async def chat_endpoint(request: ChatRequest):
-    """
-    Main chat endpoint:
-    - Checks for missing user info fields
-    - If all info present, instantiates ChatBot and processes message
-    - On 'exit', saves summary and chat history
-    - Returns bot response and any required actions (e.g., payment)
-    """
     user_message = request.message
     phone_number = request.phone_number
 
@@ -273,18 +254,7 @@ async def chat_endpoint(request: ChatRequest):
         )
     return MessageResponse(response=bot_response, missing_fields=None)
 
-# @app.get("/plan_details/{phone_number}")
-# def get_plan_details(phone_number: str):
-#     """
-#     Fetch selected plan and amount for the user (for payment display).
-#     """
-#     from data_processing.mysql_connector import get_selected_plan
-#     from data_processing.mysql_connector import get_policy_premium
-#     plan = get_selected_plan(phone_number)
-#     amount = None
-#     if plan:
-#         amount = get_policy_premium(plan)
-#     return {"plan": plan, "amount": amount}
+
 
 @app.get("/api/payment-details")
 def api_payment_details(phone_number: str):
@@ -316,14 +286,7 @@ def api_policy_specific_questions(interested_policy_type: str):
 
 @app.post("/save_policy_specific_answers")
 def api_save_policy_specific_answers(request: PolicySpecificAnswersRequest):
-    """
-    API endpoint to save policy-type-specific answers from the UI.
-    Ensures chat_history is updated in user_context.
-    Now stores both questions and answers as Q&A pairs in chat history.
-    After saving, returns the next missing question if any, else success.
-    """
-    # Use save_policy_specific_qa to store both questions and answers
-    # Need to get interested_policy_type for this user
+    
     interested_policy_type = get_interested_policy_type(request.phone_number)
     save_policy_specific_qa(request.phone_number, interested_policy_type, request.answers)
     # After saving, check for next missing policy-specific field
@@ -363,11 +326,7 @@ def api_save_interested_policy_type(request: InterestedPolicyTypeRequest):
     save_interested_policy_type(request.phone_number, request.interested_policy_type)
     return {"success": True}
 
-# Include payment-related endpoints from payments.py
 app.include_router(payments_router)
 
-# =============================
-# Run the API (for local dev)
-# =============================
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
