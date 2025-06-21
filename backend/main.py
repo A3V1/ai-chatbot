@@ -1,4 +1,3 @@
-
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -220,11 +219,13 @@ async def chat_endpoint(request: ChatRequest):
         )
     
     # If all user info and policy-specific questions are answered, trigger a recommendation
-    if not missing_fields and not missing_policy_fields and interested_policy_type:
+    from data_processing.user_context import load_user_data, update_user_context
+    user_context_data, _ = load_user_data(phone_number)
+    info_taken = user_context_data.get('info_taken', False) if user_context_data else False
+    if not missing_fields and not missing_policy_fields and interested_policy_type and not info_taken:
         # Override user_message to force a recommendation
         user_message_for_bot = "recommend a policy for me"
         # Set info_taken to True in user_context
-        from data_processing.user_context import update_user_context
         update_user_context(phone_number, {'info_taken': True})
     else:
         user_message_for_bot = user_message

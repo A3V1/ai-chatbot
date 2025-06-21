@@ -21,7 +21,7 @@ from jinja2 import Template
 from data_processing.mysql_connector import get_mysql_connection, get_policy_brochure_url
 
 # Configure logging for debugging and error tracking
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 class ConversationState(Enum):
@@ -112,7 +112,8 @@ class UserInputProcessor:
     """Processes and categorizes user input for intent detection (affirmative, negative, etc.)."""
 
     GENERIC_DETAIL_KEYWORDS = {
-        'details', 'show details', 'policy details', 'see details', 'show me details'
+        'details', 'show details', 'policy details', 'see details', 'show me details.', 'brochure',
+        'i want to see details', 'claim process', 'exclusions', 'benefits', 'coverage','give me details',
     }
     YES_VARIANTS = {
         'yes', 'y', 'proceed', 'ok', 'okay', 'sure', 'let\'s go',
@@ -425,7 +426,7 @@ class ChatBot:
     
     def _save_context(self):
         """Persist conversation state, summary, and chat history to DB after each message."""
-        # Update context summary with last bot message (or a simple summary)
+        # Update context summary with
         last_bot_msg = None
         for msg in reversed(self.memory.chat_memory.messages):
             if msg.type == "ai":
@@ -446,69 +447,53 @@ class ChatBot:
         self.user_context["conversation_state"] = self.get_conversation_state().value
         
     def _handle_payment_confirmation(self, query: str) -> Union[PaymentResponse, str]:
-        """Handle user input when awaiting payment confirmation."""
+        logger.debug(f"[Payment Confirmation] Query: '{query}', Affirmative: {UserInputProcessor.is_affirmative(query)}, Negative: {UserInputProcessor.is_negative(query)}")
         if UserInputProcessor.is_affirmative(query):
             self.set_conversation_state(ConversationState.PAYMENT_INITIATED)
-            plan = get_selected_plan(self.phone_number)
-            amount = self.user_info.get('premium_budget', 1000)
-            response = PaymentResponse(
-                action='redirect_to_payment',
-                plan=plan,
-                amount=float(amount),
-                message='Redirecting to payment page...'
-            )
-            self.add_user_plus_bot(query, response.message)
+            logger.debug("User confirmed payment. Transitioning to PAYMENT_INITIATED and calling _handle_payment_initiated.")
+            # Directly call payment initiation and return its response (which is PaymentResponse)
+            response = 'payment initiated. Redirecting to payment page...'
             return response
         elif UserInputProcessor.is_negative(query):
             self.set_conversation_state(ConversationState.SHOWING_DETAILS)
             response = 'No problem! Feel free to ask any questions about the policy.'
             self.add_user_plus_bot(query, response)
+            logger.debug("User declined payment. Returning to SHOWING_DETAILS.")
             return response
-        return self._generate_llm_response(query)
-    
+
     def _handle_payment_initiated(self, query: str) -> Union[PaymentResponse, str]:
         """Handle payment initiated state."""
-        if UserInputProcessor.contains_keywords(query, UserInputProcessor.PAYMENT_KEYWORDS):
-            plan = get_selected_plan(self.phone_number)
-            amount = self.user_info.get('premium_budget', 1000)
-            response = PaymentResponse(
-                action='redirect_to_payment',
-                plan=plan,
-                amount=float(amount),
-                message='Redirecting to payment page...'
-            )
-            self.add_user_plus_bot(query, response.message)
-            return response
-        
-        response = "Your payment is being processed. If you have any more questions or need further assistance, let me know!"
-        self.add_user_plus_bot(query, response)
+        response = PaymentResponse(
+            action='redirect_to_payment',
+            plan=self.get_selected_plan(self.phone_number),
+            amount=float(amount),
+            message='Redirecting to payment page...'
+        )
+        # Add a button in the frontend when this message is received
+        # The frontend should call GET /api/payment-details?phone_number=... when the button is clicked
+        self.add_user_plus_bot(query, response.message)
         return response
     
     def _handle_application_confirmation(self, query: str) -> str:
         """Handle application confirmation state."""
+        logger.info(f"[Application Confirmation] Received query: '{query}' (normalized: '{UserInputProcessor.normalize_input(query)}') for phone: {self.phone_number}")
         if UserInputProcessor.is_affirmative(query):
+            response = "Great! I'm starting your application now. Please hold on while I process your details.Would you like to proceed to payment? Please reply with 'yes' or 'no'."
+
             self.set_conversation_state(ConversationState.AWAITING_PAYMENT_CONFIRMATION)
-            # Set selected plan in user_context when user confirms application
-            last_policy = self._extract_last_policy_from_history()
-            logger.info(f"[Application Confirmation] Phone: {self.phone_number}, Extracted Policy: {last_policy}")
-            if last_policy:
-                result = set_selected_plan(self.phone_number, last_policy)
-                logger.info(f"set_selected_plan result: {result}")
-            response = "Perfect! Starting your application now. You'll get confirmation shortly. Ready to make payment?"
-            self.add_user_plus_bot(query, response)
+            # self.add_user_plus_bot(query, response)
             return response
-        elif UserInputProcessor.is_negative(query):
-            self.set_conversation_state(ConversationState.SHOWING_DETAILS)
-            response = 'No worries! Let me know if you have other questions about the policy.'
-            self.add_user_plus_bot(query, response)
+        else:
+            response = "No problem! If you have any questions or need more information about the policy, just let me know."
+            self.set_conversation_state(ConversationState.AWAITING_APPLICATION_CONFIRMATION)
+            # self.add_user_plus_bot(query, response)
             return response
-        return self._generate_llm_response(query)
     
     def _handle_recommendation_given(self, query: str) -> str:
         self.set_conversation_state(ConversationState.SHOWING_DETAILS)
         """Handle user input after a policy recommendation has been given."""
-        if UserInputProcessor.contains_keywords(query, UserInputProcessor.BROCHURE_KEYWORDS):
-            return self._handle_brochure_request(query)
+        if UserInputProcessor.contains_keywords(query, UserInputProcessor.QUESTION_KEYWORDS):
+            return self._show_policy_details(query)
         # Always show details for the last recommended policy
         self.set_conversation_state(ConversationState.SHOWING_DETAILS)
         last_policy = self._extract_last_policy_from_history()
@@ -588,9 +573,16 @@ class ChatBot:
             f"- Renewability: {policy_row.get('renewability', 'Not specified')}\n"
             f"- Tax Benefits: {policy_row.get('tax_benefits', 'Not specified')}\n"
             f"- Support: {policy_row.get('contact_support', 'Not specified')}\n\n"
-            "Would you like to proceed with your application for this policy? (Type 'yes' to apply or 'no' to ask more questions.)"
+            "Would you like to proceed with your application for this policy? (Type 'yes' to apply or 'no' to ask more questions.)\n"
+            "Please type 'yes' to proceed with the application or 'no' if you have more questions."
         )
+        logger.info(f"[Show Policy Details] Phone: {self.phone_number}, Policy: {policy_name}, State set to AWAITING_APPLICATION_CONFIRMATION")
+        # Add bot message to chat history and save state after showing details
+        self.add_user_plus_bot(policy_name, details)
+        self._save_context()
         return details
+        #add a line which takes input from user to proceed with application or ask more questions
+        
         # If no details found in vectorstore, prompt for recommendation
         self.set_conversation_state(ConversationState.RECOMMENDATION_GIVEN)
         return ("I couldn't find any policy details to show right now. "
@@ -678,6 +670,7 @@ class ChatBot:
         Returns the policy name/type if set, else None.
         """
         try:
+            # Call the imported function, not the method itself
             return get_selected_plan(phone_number)
         except Exception as e:
             logger.error(f"Error fetching selected_plan for {phone_number}: {e}")
@@ -690,35 +683,23 @@ class ChatBot:
         if not query.strip():
             return "Please provide a valid question or request."
         
+        # Always reload user context and state before handling input
+        self.user_context = get_user_context(self.phone_number) or {}
+        self.user_info = get_user_info(self.phone_number) or {}
+        
         state = self.get_conversation_state()
         logger.debug(f"Processing query in state: {state.value}")
         
         try:
-            # State-based routing
-            # Prioritize direct user intent first
-            if UserInputProcessor.contains_keywords(query, UserInputProcessor.PAYMENT_KEYWORDS):
-                result = self._handle_payment_request(query)
-            elif UserInputProcessor.contains_keywords(query, UserInputProcessor.APPLICATION_KEYWORDS):
-                result = self._handle_application_request(query)
-            # Handle generic detail queries only in appropriate states
-            elif query.strip().lower() in UserInputProcessor.GENERIC_DETAIL_KEYWORDS:
-                last_policy = self.get_selected_plan(self.phone_number) or self._extract_last_policy_from_history()
-                if last_policy and state in [ConversationState.SHOWING_DETAILS, ConversationState.RECOMMENDATION_GIVEN]:
-                    result = self._show_policy_details(query)
-                else:
-                    self.set_conversation_state(ConversationState.RECOMMENDATION_GIVEN)
-                    result = ("I couldn't find any policy details to show right now. "
-                              "Would you like a recommendation? Please type 'recommend a policy' or specify the policy name you're interested in.")
-            # For other question keywords, use LLM unless in SHOWING_DETAILS
-            elif UserInputProcessor.contains_keywords(query, UserInputProcessor.QUESTION_KEYWORDS):
-                if state == ConversationState.SHOWING_DETAILS:
-                    result = self._show_policy_details(query)
-                else:
-                    result = self._generate_llm_response(query)
-        # Then handle based on current conversation state
+            # --- Prioritize state-based handlers first ---
+            if state == ConversationState.AWAITING_APPLICATION_CONFIRMATION:
+                result = self._handle_application_confirmation(query)
+            elif state == ConversationState.AWAITING_PAYMENT_CONFIRMATION:
+                result = self._handle_payment_confirmation(query)
+            elif state == ConversationState.PAYMENT_INITIATED:
+                result = self._handle_payment_initiated(query)
             elif state == ConversationState.RECOMMENDATION_GIVEN:
-                # If user keeps typing 'details' and no policy is set, break the loop and prompt for recommendation
-                if query.strip().lower() in UserInputProcessor.GENERIC_DETAIL_KEYWORDS:
+                if query.strip().lower() in UserInputProcessor.QUESTION_KEYWORDS:
                     last_policy = self.get_selected_plan(self.phone_number) or self._extract_last_policy_from_history()
                     if not last_policy:
                         result = ("I couldn't find any policy details to show right now. "
@@ -729,27 +710,37 @@ class ChatBot:
                     result = self._handle_recommendation_given(query)
             elif state == ConversationState.SHOWING_DETAILS:
                 result = self._show_policy_details(query)
-            elif state == ConversationState.AWAITING_APPLICATION_CONFIRMATION:
-                 result = self._handle_application_confirmation(query)
-            elif state == ConversationState.AWAITING_PAYMENT_CONFIRMATION:
-                result = self._handle_payment_confirmation(query)
-            elif state == ConversationState.PAYMENT_INITIATED:
-                result = self._handle_payment_initiated(query)
-            # Handle initial state
             elif state == ConversationState.START:
                 self.set_conversation_state(ConversationState.RECOMMENDATION_GIVEN)
                 result = self._generate_llm_response(query)
-            # Fallback for unclear inputs or unexpected states
+            # --- If not in a special state, use keyword-based routing ---
+            elif UserInputProcessor.contains_keywords(query, UserInputProcessor.PAYMENT_KEYWORDS):
+                result = self._handle_payment_request(query)
+            elif UserInputProcessor.contains_keywords(query, UserInputProcessor.APPLICATION_KEYWORDS):
+                result = self._handle_application_request(query)
+            elif query.strip().lower() in UserInputProcessor.GENERIC_DETAIL_KEYWORDS:
+                last_policy = self.get_selected_plan(self.phone_number) or self._extract_last_policy_from_history()
+                if last_policy and state in [ConversationState.SHOWING_DETAILS, ConversationState.RECOMMENDATION_GIVEN]:
+                    result = self._show_policy_details(query)
+                else:
+                    self.set_conversation_state(ConversationState.RECOMMENDATION_GIVEN)
+                    result = ("I couldn't find any policy details to show right now. "
+                              "Would you like a recommendation? Please type 'recommend a policy' or specify the policy name you're interested in.")
+            elif UserInputProcessor.contains_keywords(query, UserInputProcessor.QUESTION_KEYWORDS):
+                if state == ConversationState.SHOWING_DETAILS:
+                    result = self._show_policy_details(query)
+                else:
+                    result = self._generate_llm_response(query)
             else:
                 self.set_conversation_state(ConversationState.SHOWING_DETAILS)
                 result = self._generate_llm_response(query)
         except Exception as e:
-            logger.error(f"Error processing query: {e}")
+            import traceback
+            logger.error(f"Error processing query: {e}\n{traceback.format_exc()}")
             result = "I'm here to help you secure your insurance. You can ask about policy details, say 'yes' to proceed, or type 'pay' to move to payment."
         # Persist context after every message
         self._save_context()
         return result
-
 
 
 class UserInfoManager:
@@ -963,15 +954,20 @@ def main():
     print("Type 'exit' or 'quit' to end the conversation.\n")
     try:
         bot = ChatBot(phone_number)
-        # Immediately recommend a policy after collecting all info
-        initial_recommendation = bot.ask("recommend a policy for me")
-        if isinstance(initial_recommendation, PaymentResponse):
-            print(f"Bot: {initial_recommendation.message}")
-            print(f"Action: {initial_recommendation.action}")
-            print(f"Plan: {initial_recommendation.plan}")
-            print(f"Amount: ₹{initial_recommendation.amount}")
-        else:
-            print(f"Bot: {initial_recommendation}")
+        # # Immediately recommend a policy after collecting all info but only once if the state is START
+        state = get_user_context(phone_number).get('conversation_state', ConversationState)
+        # logger.info(f"[Main] Initial conversation state for phone {phone_number}: {state}")
+        # # Only ask for recommendation if state is START and NOT already in application confirmation
+        if state == ConversationState.START:
+            initial_recommendation = bot.ask("recommend a policy")
+            logger.info(f"[Main] Initial recommendation response type: {type(initial_recommendation)}")
+            if isinstance(initial_recommendation, PaymentResponse):
+                print(f"Bot: {initial_recommendation.message}")
+                print(f"Action: {initial_recommendation.action}")
+                print(f"Plan: {initial_recommendation.plan}")
+                print(f"Amount: ₹{initial_recommendation.amount}")
+            else:
+                print(f"Bot: {initial_recommendation}")
         while True:
             user_input = input("User: ").strip()
             if user_input.lower() in ["exit", "quit"]:

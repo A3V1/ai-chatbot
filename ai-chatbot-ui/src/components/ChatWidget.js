@@ -25,6 +25,7 @@ function ChatWidget() {
   const [planAmount, setPlanAmount] = useState(null); // set when bot recommends a plan
   const [showPaymentConfirm, setShowPaymentConfirm] = useState(false);
   const [pendingPaymentData, setPendingPaymentData] = useState(null);
+  const [paymentResponse, setPaymentResponse] = useState(null); // New state for PaymentResponse
 
   const closeChat = async () => {
     try {
@@ -225,7 +226,11 @@ function ChatWidget() {
           body: JSON.stringify({ message: userMsg.text, phone_number: phoneNumber }),
         });
         const data = await response.json();
-        if (data.missing_fields && data.missing_fields.length > 0) {
+        // If backend returns a PaymentResponse (object with action 'redirect_to_payment')
+        if (data && typeof data === 'object' && data.action === 'redirect_to_payment') {
+          setPaymentResponse(data);
+          setMessages(prev => [...prev, { text: data.message, sender: 'bot', isPayment: true }]);
+        } else if (data.missing_fields && data.missing_fields.length > 0) {
           setCollectingUserInfo(true);
           setCurrentField(data.missing_fields[0]);
           setMessages(prev => [...prev, { text: data.missing_fields[0].question, sender: 'bot' }]);
@@ -254,6 +259,7 @@ function ChatWidget() {
       setTimeout(() => {
         navigate('/payment', { state: pendingPaymentData });
         setPendingPaymentData(null);
+        setPaymentResponse(null); // Clear after navigation
       }, 700); // 700ms delay
     }
   };
@@ -329,14 +335,8 @@ function ChatWidget() {
                         handleProceedToPayment({ plan: recommendedPlan, amount: planAmount, phone_number: phoneNumber });
                       }, 500); // 0.5 second delay for UX
                     }
-                    // Show payment button if bot says payment is being processed or ready to pay
-                    const showPaymentBtn =
-                      message.sender === 'bot' &&
-                      (
-                        message.text.toLowerCase().includes('ready to secure your policy') ||
-                        message.text.toLowerCase().includes('ready to make payment?') ||
-                        message.text.toLowerCase().includes("type 'yes' to proceed with payment")
-                      );
+                    // Show Proceed to Payment button only if this is a PaymentResponse
+                    const showPaymentBtn = message.isPayment && paymentResponse;
                     return (
                       <div key={index} className={`message-row ${message.sender === 'user' ? 'user-row' : 'bot-row'}`}>
                         {message.sender === 'bot' && (
@@ -344,22 +344,16 @@ function ChatWidget() {
                         )}
                         <div className={`message ${message.sender}-message`}>
                           {message.text}
-                          {/* Show Proceed to Payment button after payment confirmation */}
+                          {/* Show Proceed to Payment button only for PaymentResponse */}
                           {showPaymentBtn && (
-                            <button className="footer-send-btn" style={{margin:'10px 0'}} onClick={() => handleProceedToPayment({ plan: recommendedPlan, amount: planAmount, phone_number: phoneNumber })}>
-                              Proceed to Payment
-                            </button>
-                          )}
-                          {/* Show Proceed to Payment button right after recommendation */}
-                          {message.sender === 'bot' && recommendedPlan && planAmount && message.text.includes(recommendedPlan) && (
                             <button
                               className="footer-send-btn"
                               style={{ margin: '10px 0' }}
-                              onClick={() => {
-                                // Debug log for payment navigation
-                                window.console && console.debug && console.debug('Proceed to Payment clicked:', { plan: recommendedPlan, amount: planAmount, phone_number: phoneNumber });
-                                handleProceedToPayment({ plan: recommendedPlan, amount: planAmount, phone_number: phoneNumber });
-                              }}
+                              onClick={() => handleProceedToPayment({
+                                plan: paymentResponse.plan,
+                                amount: paymentResponse.amount,
+                                phone_number: phoneNumber
+                              })}
                             >
                               Proceed to Payment
                             </button>
