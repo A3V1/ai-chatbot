@@ -110,7 +110,10 @@ class PolicyManager:
 
 class UserInputProcessor:
     """Processes and categorizes user input for intent detection (affirmative, negative, etc.)."""
-    
+
+    GENERIC_DETAIL_KEYWORDS = {
+        'details', 'show details', 'policy details', 'see details', 'show me details'
+    }
     YES_VARIANTS = {
         'yes', 'y', 'proceed', 'ok', 'okay', 'sure', 'let\'s go',
         'go ahead', 'continue', 'confirm', 'pay', 'payment', 'ready',
@@ -131,11 +134,10 @@ class UserInputProcessor:
         'do payment'
     }
     
-    BROCHURE_KEYWORDS = {'brochure', 'details'}
-    
     QUESTION_KEYWORDS = {
         'claim', 'exclusion', 'benefit', 'hospital', 'coverage',
-        'premium', 'what', 'how', 'when', 'where', 'why'
+        'premium', 'what', 'how', 'when', 'where', 'why', 'brochure',
+        *GENERIC_DETAIL_KEYWORDS, 'show brochure'
     }
     
     @classmethod
@@ -199,14 +201,12 @@ Current User Query: {{ question }}
 GOAL: Analyze user profile and recommend the most suitable policy immediately.
 
 Response Format:
-"Based on your profile ({{ age }} years, ₹{{ desired_coverage }} coverage, ₹{{ premium_budget }} budget), I recommend **[Policy Name]**.
-
+"Based on your profile , I recommend **{{policy_name}}**.
 Key highlights:
 • Coverage: ₹[amount]
 • Premium: ₹[amount]/year
 • [Top 2-3 benefits relevant to user]
-
-This perfectly matches your requirements. Would you like to see the complete details and proceed with the application?"
+ Would you like to see the complete details?"
 
 Policy Selection Logic:
 - Match user's interested_policy_type with available policies
@@ -224,21 +224,12 @@ For Policy Details Request:
 ✓ Premium: ₹[amount]/{{ premium_payment_mode }}
 ✓ [Key benefit 1 - specific to user needs]
 ✓ [Key benefit 2 - competitive advantage]
-✓ [Key benefit 3 - peace of mind factor]
 
-Special features for you:
-• [Personalized feature based on profile]
-• [Claim settlement record/network hospitals if health]
-• [Tax benefits if applicable]
-
-Ready to secure this excellent rate? Shall we start your application?"
+Shall we start your application?"
 
 For Brochure Request:
 "Here's the detailed brochure: {{ policy_brochure_url }}
-
-This policy is specifically designed for someone with your profile - {{ age }} years old, looking for ₹{{ desired_coverage }} coverage within ₹{{ premium_budget }} budget. 
-
-Ready to apply and lock in this rate today?"
+This policy is specifically designed for someone with your profile 
 
 **STATE: 'showing_details'**
 GOAL: Address concerns and close for application.
@@ -248,11 +239,10 @@ For Questions about Policy:
 - Always relate benefits back to user's personal situation
 - End with application close: "This addresses your concern perfectly. Ready to apply?"
 
-For Claims Questions:
-"Claims are processed within 24-48 hours with {{ claim_process or '95%+ approval rate' }}. Our network includes {{ hospital_count or 'major' }} hospitals nationwide. This ensures you get hassle-free treatment when needed. Shall we secure this coverage for you today?"
+For Claims Questions:{{claim_process}}-fetch this from vector store
 
 For Exclusions Questions:
-"The exclusions are standard: {{ exclusions or 'pre-existing diseases (2-year waiting), cosmetic procedures, and experimental treatments' }}. However, this policy covers all essential medical needs for your family. The benefits far outweigh these standard exclusions. Ready to proceed?"
+"The exclusions are standard: {{ exclusions }}. However, this policy covers all essential medical needs for your family. The benefits far outweigh these standard exclusions. Ready to proceed?"
 
 **STATE: 'awaiting_application_confirmation'**
 GOAL: Confirm application and transition to payment.
@@ -279,11 +269,6 @@ Return PaymentResponse object:
   "message": "Redirecting to secure payment gateway for [Policy Name] - ₹[amount]. Your policy will be active immediately after payment!"
 }
 
-For Hesitation:
-"Payment is 100% secure through our encrypted gateway. You can pay via UPI, card, or net banking. Once paid, your policy is active immediately with instant digital certificate. 
-
-Your family's protection shouldn't wait. Ready to complete this in the next 2 minutes?"
-
 **STATE: 'payment_initiated'**
 GOAL: Provide assurance and support.
 
@@ -305,11 +290,6 @@ Thank you for choosing us for your family's protection! Is there anything else I
 - Use technical jargon without explanation
 - End responses without a clear call-to-action
 - Repeat the same information unnecessarily
-
-**Objection Handling:**
-- "I need to think about it" → "I understand this is important. What specific aspect would help you decide today? I can address any concerns right now."
-- "It's expensive" → "Let's break this down: ₹[amount] per month secures ₹{{ desired_coverage }} for your family. That's less than [relatable daily expense]. Can you put a price on your family's security?"
-- "I'll compare with others" → "I've already analyzed the market for your specific needs. This offers the best value with [specific advantage]. Let's secure this rate before it changes."
 
 === QUALITY CONTROL ===
 
@@ -426,8 +406,7 @@ class ChatBot:
     def get_conversation_state(self) -> ConversationState:
         """Fetch the current conversation state from DB (default: START)."""
         user_context = get_user_context(self.phone_number) or {}
-        state_str = user_context.get('conversation_state', ConversationState.START.value)
-        
+        state_str = user_context.get('conversation_state', ConversationState.START.value)        
         try:
             return ConversationState(state_str)
         except ValueError:
@@ -526,46 +505,27 @@ class ChatBot:
         return self._generate_llm_response(query)
     
     def _handle_recommendation_given(self, query: str) -> str:
-        """Handle user input after a policy recommendation has been given."""
-        if UserInputProcessor.is_affirmative(query):
-            self.set_conversation_state(ConversationState.SHOWING_DETAILS)
-            last_policy = self._extract_last_policy_from_history()
-            logger.info(f"[Recommendation Given] Phone: {self.phone_number}, Extracted Policy: {last_policy}")
-            if last_policy:
-                result = set_selected_plan(self.phone_number, last_policy)
-                logger.info(f"set_selected_plan result: {result}")
-                brochure_url = get_policy_brochure_url(last_policy)
-                if brochure_url:
-                    response = f"Here's the {last_policy} brochure: {brochure_url}\n\nThis plan is perfect for your profile. Ready to apply and lock in this rate?"
-                else:
-                    response = f"{last_policy} offers:\n✓ ₹10L coverage\n✓ Cashless hospitals\n✓ No waiting period for accidents\n✓ Family floater option\n\nReady to apply?"
-            else:
-                response = "Details not available. Please ask about other policies or provide more details."
-            self.add_user_plus_bot(query, response)
-            return response
-        elif UserInputProcessor.contains_keywords(query, UserInputProcessor.BROCHURE_KEYWORDS):
-            # If user asks for details/brochure, handle it directly
-            return self._handle_brochure_request(query)
-        # If not affirmative and not brochure, assume user is asking for details or general questions
-        # and transition to SHOWING_DETAILS before generating LLM response.
         self.set_conversation_state(ConversationState.SHOWING_DETAILS)
-        return self._generate_llm_response(query)
-    
-    def _handle_brochure_request(self, query: str) -> str:
-        """Handle user requests for a policy brochure."""
+        """Handle user input after a policy recommendation has been given."""
+        if UserInputProcessor.contains_keywords(query, UserInputProcessor.BROCHURE_KEYWORDS):
+            return self._handle_brochure_request(query)
+        # Always show details for the last recommended policy
         self.set_conversation_state(ConversationState.SHOWING_DETAILS)
         last_policy = self._extract_last_policy_from_history()
+        logger.info(f"[Recommendation Given] Phone: {self.phone_number}, Extracted Policy: {last_policy}")
         if last_policy:
+            result = set_selected_plan(self.phone_number, last_policy)
+            logger.info(f"set_selected_plan result: {result}")
             brochure_url = get_policy_brochure_url(last_policy)
             if brochure_url:
-                response = f"Here's the {last_policy} brochure: {brochure_url}\n\nReady to apply?"
+                response = f"Here's the {last_policy} brochure: {brochure_url}\n\nThis plan is perfect for your profile. Ready to apply and lock in this rate?"
             else:
-                response = f"{last_policy} details:\n✓ Comprehensive coverage\n✓ Cashless claims\n✓ Wide network\n\nReady to apply?"
+                response = f"{last_policy} offers:\n✓ ₹10L coverage\n✓ Cashless hospitals\n✓ No waiting period for accidents\n✓ Family floater option\n\nReady to apply?"
         else:
-            response = "I'll get you the policy details. Ready to apply after reviewing?"
+            response = "Details not available. Please ask about other policies or provide more details."
         self.add_user_plus_bot(query, response)
         return response
-    
+  
     def _handle_application_request(self, query: str) -> str:
         """Handle user requests to apply for a policy."""
         self.set_conversation_state(ConversationState.AWAITING_APPLICATION_CONFIRMATION)
@@ -580,16 +540,65 @@ class ChatBot:
         self.add_user_plus_bot(query, response)
         return response
     
-    def _generate_llm_response(self, query: str) -> str:
-        """
-        Generate a response using the LLM.
-        - Performs semantic search for relevant docs
-        - Builds a prompt with user profile, context, and chat history
-        - Invokes the LLM and returns its response
-        """
+    def _show_policy_details(self, policy_name: str) -> str:
+        # Handle generic queries like 'details', 'show details', etc.
+        generic_keywords = {'details', 'show details', 'policy details', 'see details', 'show me details','brochure','i want to see details','claim_process','exclusions','benefits','coverage','premium','what','how','when','where','why'}
+        if policy_name.strip().lower() in generic_keywords or policy_name not in PolicyManager.POLICIES:
+            # Try to get last selected/recommended policy
+            last_policy = self.get_selected_plan(self.phone_number)
+            if not last_policy:
+                last_policy = self._extract_last_policy_from_history()
+            if last_policy:
+                policy_name = last_policy
+            else:
+                # No policy found, reset state and prompt for recommendation
+                self.set_conversation_state(ConversationState.RECOMMENDATION_GIVEN)
+                return ("I couldn't find any policy details to show right now. "
+                        "Would you like a recommendation? Please type 'recommend a policy' or specify the policy name you're interested in.")
+        # Show details and move to application confirmation
+        self.set_conversation_state(ConversationState.AWAITING_APPLICATION_CONFIRMATION)
+        # Fetch policy details from database (describe insurance_policies)
         try:
-            # Enhance query with interested_policy_type for better semantic search
-            # Retrieve interested_policy_type from chat history using the dedicated function
+            conn = get_mysql_connection()
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute("SELECT * FROM insurance_policies WHERE policy_name = %s", (policy_name,))
+            policy_row = cursor.fetchone()
+            cursor.close()
+            conn.close()
+        except Exception as e:
+            logger.error(f"Error fetching policy details from DB: {e}")
+            self.set_conversation_state(ConversationState.RECOMMENDATION_GIVEN)
+            return ("I couldn't find any policy details to show right now. "
+                    "Would you like a recommendation? Please type 'recommend a policy' or specify the policy name you're interested in.")
+        if not policy_row:
+            self.set_conversation_state(ConversationState.RECOMMENDATION_GIVEN)
+            return ("I couldn't find any policy details to show right now. "
+                    "Would you like a recommendation? Please type 'recommend a policy' or specify the policy name you're interested in.")
+        details = (
+            f"Details for {policy_name}:\n"
+            f"- Coverage Amount: ₹{policy_row.get('coverage_amount', 'Not specified')}\n"
+            f"- Premium: ₹{policy_row.get('premium', 'Not specified')} per year\n"
+            f"- Claim Process: {policy_row.get('claim_process', 'Standard claim process')}\n"
+            f"- Exclusions: {policy_row.get('exclusions', 'Standard exclusions apply')}\n"
+            f"- Add-ons Available: {policy_row.get('add_ons_available', 'Not specified')}\n"
+            f"- Features: {policy_row.get('features', 'Not specified')}\n"
+            f"- Eligibility: {policy_row.get('eligibility', 'Not specified')}\n"
+            f"- Customer Rating: {policy_row.get('customer_rating', 'Not specified')}\n"
+            f"- Policy Term: {policy_row.get('policy_term_min', 'Not specified')} to {policy_row.get('policy_term_max', 'Not specified')}\n"
+            f"- Renewability: {policy_row.get('renewability', 'Not specified')}\n"
+            f"- Tax Benefits: {policy_row.get('tax_benefits', 'Not specified')}\n"
+            f"- Support: {policy_row.get('contact_support', 'Not specified')}\n\n"
+            "Would you like to proceed with your application for this policy? (Type 'yes' to apply or 'no' to ask more questions.)"
+        )
+        return details
+        # If no details found in vectorstore, prompt for recommendation
+        self.set_conversation_state(ConversationState.RECOMMENDATION_GIVEN)
+        return ("I couldn't find any policy details to show right now. "
+                "Would you like a recommendation? Please type 'recommend a policy' or specify the policy name you're interested in.")
+        
+    def _generate_llm_response(self, query: str) -> str:
+       
+        try:
             interested_policy_type = get_interested_policy_type(self.phone_number)
             search_query = query
             if interested_policy_type and "recommend" in query.lower():
@@ -663,8 +672,19 @@ class ChatBot:
         logger.debug("No policy found in chat history or user_context.")
         return None
     
-    def ask_chain(self, query: str):
-        return self.chain.invoke({"question": query})
+    def get_selected_plan(self, phone_number: str) -> Optional[str]:
+        """
+        Retrieve the selected policy (plan) for the user from user_context table.
+        Returns the policy name/type if set, else None.
+        """
+        try:
+            return get_selected_plan(phone_number)
+        except Exception as e:
+            logger.error(f"Error fetching selected_plan for {phone_number}: {e}")
+            return None
+
+    # def ask_chain(self, query: str):
+    #     return self.chain.invoke({"question": query})
 
     def ask(self, query: str) -> Union[str, PaymentResponse]:
         if not query.strip():
@@ -675,28 +695,52 @@ class ChatBot:
         
         try:
             # State-based routing
-            if state == ConversationState.AWAITING_PAYMENT_CONFIRMATION:
+            # Prioritize direct user intent first
+            if UserInputProcessor.contains_keywords(query, UserInputProcessor.PAYMENT_KEYWORDS):
+                result = self._handle_payment_request(query)
+            elif UserInputProcessor.contains_keywords(query, UserInputProcessor.APPLICATION_KEYWORDS):
+                result = self._handle_application_request(query)
+            # Handle generic detail queries only in appropriate states
+            elif query.strip().lower() in UserInputProcessor.GENERIC_DETAIL_KEYWORDS:
+                last_policy = self.get_selected_plan(self.phone_number) or self._extract_last_policy_from_history()
+                if last_policy and state in [ConversationState.SHOWING_DETAILS, ConversationState.RECOMMENDATION_GIVEN]:
+                    result = self._show_policy_details(query)
+                else:
+                    self.set_conversation_state(ConversationState.RECOMMENDATION_GIVEN)
+                    result = ("I couldn't find any policy details to show right now. "
+                              "Would you like a recommendation? Please type 'recommend a policy' or specify the policy name you're interested in.")
+            # For other question keywords, use LLM unless in SHOWING_DETAILS
+            elif UserInputProcessor.contains_keywords(query, UserInputProcessor.QUESTION_KEYWORDS):
+                if state == ConversationState.SHOWING_DETAILS:
+                    result = self._show_policy_details(query)
+                else:
+                    result = self._generate_llm_response(query)
+        # Then handle based on current conversation state
+            elif state == ConversationState.RECOMMENDATION_GIVEN:
+                # If user keeps typing 'details' and no policy is set, break the loop and prompt for recommendation
+                if query.strip().lower() in UserInputProcessor.GENERIC_DETAIL_KEYWORDS:
+                    last_policy = self.get_selected_plan(self.phone_number) or self._extract_last_policy_from_history()
+                    if not last_policy:
+                        result = ("I couldn't find any policy details to show right now. "
+                                  "Would you like a recommendation? Please type 'recommend a policy' or specify the policy name you're interested in.")
+                    else:
+                        result = self._show_policy_details(query)
+                else:
+                    result = self._handle_recommendation_given(query)
+            elif state == ConversationState.SHOWING_DETAILS:
+                result = self._show_policy_details(query)
+            elif state == ConversationState.AWAITING_APPLICATION_CONFIRMATION:
+                 result = self._handle_application_confirmation(query)
+            elif state == ConversationState.AWAITING_PAYMENT_CONFIRMATION:
                 result = self._handle_payment_confirmation(query)
             elif state == ConversationState.PAYMENT_INITIATED:
                 result = self._handle_payment_initiated(query)
-            elif state == ConversationState.AWAITING_APPLICATION_CONFIRMATION:
-                result = self._handle_application_confirmation(query)
-            elif state == ConversationState.RECOMMENDATION_GIVEN:
-                result = self._handle_recommendation_given(query)
-            elif (state == ConversationState.SHOWING_DETAILS and UserInputProcessor.contains_keywords(query, UserInputProcessor.QUESTION_KEYWORDS)):
-                result = self._generate_llm_response(query)
-            elif UserInputProcessor.contains_keywords(query, UserInputProcessor.APPLICATION_KEYWORDS):
-                result = self._handle_application_request(query)
-            elif UserInputProcessor.contains_keywords(query, UserInputProcessor.PAYMENT_KEYWORDS):
-                result = self._handle_payment_request(query)
-            elif UserInputProcessor.contains_keywords(query, UserInputProcessor.BROCHURE_KEYWORDS):
-                result = self._handle_brochure_request(query)
+            # Handle initial state
             elif state == ConversationState.START:
                 self.set_conversation_state(ConversationState.RECOMMENDATION_GIVEN)
                 result = self._generate_llm_response(query)
-            else: # Catch-all for unhandled inputs
-                # If no specific state or keyword match, try to generate an LLM response
-                # and transition to SHOWING_DETAILS for general discussion.
+            # Fallback for unclear inputs or unexpected states
+            else:
                 self.set_conversation_state(ConversationState.SHOWING_DETAILS)
                 result = self._generate_llm_response(query)
         except Exception as e:
