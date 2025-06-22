@@ -333,10 +333,15 @@ function ChatWidget() {
                     ) {
                       setTimeout(() => {
                         handleProceedToPayment({ plan: recommendedPlan, amount: planAmount, phone_number: phoneNumber });
-                      }, 500); // 0.5 second delay for UX
+                      }, 1000); // 1 second delay
                     }
-                    // Show Proceed to Payment button only if this is a PaymentResponse
-                    const showPaymentBtn = message.isPayment && paymentResponse;
+
+                    // Show button if this is a PaymentResponse (from backend)
+                    const showPaymentBtnFromResponse = message.isPayment && paymentResponse;
+                    // Show button if bot just recommended a plan (plan/amount extracted from message)
+                    const showPaymentBtnFromRecommendation =
+                      message.sender === 'bot' && recommendedPlan && planAmount && message.text.includes(recommendedPlan);
+
                     return (
                       <div key={index} className={`message-row ${message.sender === 'user' ? 'user-row' : 'bot-row'}`}>
                         {message.sender === 'bot' && (
@@ -344,14 +349,30 @@ function ChatWidget() {
                         )}
                         <div className={`message ${message.sender}-message`}>
                           {message.text}
-                          {/* Show Proceed to Payment button only for PaymentResponse */}
-                          {showPaymentBtn && (
+
+                          {/* Show Proceed to Payment button for PaymentResponse */}
+                          {showPaymentBtnFromResponse && (
                             <button
                               className="footer-send-btn"
                               style={{ margin: '10px 0' }}
                               onClick={() => handleProceedToPayment({
-                                plan: paymentResponse.plan,
-                                amount: paymentResponse.amount,
+                                plan: paymentResponse.plan || recommendedPlan,
+                                amount: paymentResponse.amount || planAmount,
+                                phone_number: phoneNumber
+                              })}
+                            >
+                              Proceed to Payment
+                            </button>
+                          )}
+
+                          {/* Show Proceed to Payment button after plan recommendation (if not already a payment response) */}
+                          {!showPaymentBtnFromResponse && showPaymentBtnFromRecommendation && (
+                            <button
+                              className="footer-send-btn"
+                              style={{ margin: '10px 0' }}
+                              onClick={() => handleProceedToPayment({
+                                plan: recommendedPlan,
+                                amount: planAmount,
                                 phone_number: phoneNumber
                               })}
                             >
