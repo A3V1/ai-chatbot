@@ -18,7 +18,7 @@ from data_processing.user_context import (
     update_user_context, set_selected_plan, get_selected_plan
 )
 from jinja2 import Template
-from data_processing.mysql_connector import get_mysql_connection, get_policy_brochure_url
+from data_processing.mysql_connector import get_mysql_connection
 
 # Configure logging for debugging and error tracking
 logging.basicConfig(level=logging.DEBUG)

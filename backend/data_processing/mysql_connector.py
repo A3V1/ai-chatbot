@@ -35,18 +35,18 @@ def get_mysql_connection(
     )
     return conn
 
-def get_policy_brochure_url(policy_name: str):
-    """Fetch the brochure URL for a given policy name from the database."""
-    conn = get_mysql_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT policy_brochure_url FROM insurance_policies WHERE policy_name = %s",
-        (policy_name,)
-    )
-    result = cursor.fetchone()
-    cursor.close()
-    conn.close()
-    return result[0] if result else None
+# def get_policy_brochure_url(policy_name: str):
+#     """Fetch the brochure URL for a given policy name from the database."""
+#     conn = get_mysql_connection()
+#     cursor = conn.cursor()
+#     cursor.execute(
+#         "SELECT policy_brochure_url FROM insurance_policies WHERE policy_name = %s",
+#         (policy_name,)
+#     )
+#     result = cursor.fetchone()
+#     cursor.close()
+#     conn.close()
+#     return result[0] if result else None
 
 def get_policy_premium(policy_name: str):
     """Fetch the premium for a given policy name from the database."""
