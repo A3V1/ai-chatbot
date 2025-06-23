@@ -331,3 +331,63 @@ app.include_router(payments_router)
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
+
+# from data_processing.pinecone_handler import upload_vectorstore
+# from langchain.prompts import PromptTemplate
+# from langchain.chains import ConversationalRetrievalChain
+# from langchain.memory import ConversationBufferMemory
+# from langchain_openai import ChatOpenAI
+# import os
+# from dotenv import load_dotenv
+
+# load_dotenv()
+
+# # Prompt definition
+# template = """
+# You are an insurance agent. These humans will ask you questions about their insurance.
+# Use the following piece of context to answer the question.
+# If you don't know the answer, just say you don't know.
+# Suggest the customer the right insurance policy according to their needs, giving enough information about it.
+# Keep the answer concise and under 60 words.
+
+# Context: {context}
+# Question: {question}
+# Answer:
+# """
+
+# prompt = PromptTemplate(
+#     template=template,
+#     input_variables=["context", "question"]
+# )
+
+# class ChatBot:
+#     def __init__(self):
+#         self.vectorstore = upload_vectorstore("insurance-chatbot")
+#         self.retriever = self.vectorstore.as_retriever()
+#         self.memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+
+#         self.chain = ConversationalRetrievalChain.from_llm(
+#             llm=ChatOpenAI(
+#                 model="mistralai/mistral-small",
+#                 openai_api_key=os.getenv("OPENROUTER_API_KEY"),
+#                 openai_api_base="https://openrouter.ai/api/v1",
+#                 temperature=0.8
+#             ),
+#             retriever=self.retriever,
+#             memory=self.memory,
+#             combine_docs_chain_kwargs={"prompt": prompt},
+#             return_source_documents=True  # optional but useful
+#         )
+
+#     def ask(self, query):
+#         return self.chain.invoke({"question": query})
+
+# if __name__ == "__main__":
+#     bot = ChatBot()
+#     while True:
+#         user_input = input("Ask me anything about insurance: ")
+#         if user_input.lower() in ["exit", "quit"]:
+#             break
+#         result = bot.ask(user_input)
+#         print(result)

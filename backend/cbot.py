@@ -49,14 +49,12 @@ class ChatBotConfig:
         load_dotenv()
         self.pinecone_env = os.getenv("PINECONE_ENVIRONMENT", "aped-4627-b74a")
         self.openai_api_key = os.getenv("OPENROUTER_API_KEY")
-        # self.gemini_api_key = os.getenv("GEMINI_API_KEY")
         self.model_name = "google/gemini-flash-1.5-8b"  # LLM used for response generation
         self.openai_api_base = "https://openrouter.ai/api/v1"
-        # self.gemini_api_base=""# OpenRouter API endpoint
         self.temperature = 0.8  # LLM creativity
         self.embedding_model = "all-MiniLM-L6-v2"  # For semantic search
         self.pinecone_index = "insurance-chatbot"  # Pinecone index name
-        self.similarity_search_k = 4 # Number of docs to retrieve
+        self.similarity_search_k = 5 # Number of docs to retrieve
         os.environ["PINECONE_ENVIRONMENT"] = self.pinecone_env
     
 
@@ -204,6 +202,14 @@ Current User Query: {{ question }}
 **STATE: 'start'**
 GOAL: Analyze user profile and recommend the most suitable policy immediately.
 
+ POLICIES = [
+        "SmartGrowth ULIP", "InvestSmart ULIP Plan", "MediCare Secure Plan",
+        "CarePlus Comprehensive", "WellShield Elite", "HealthGuard Basic",
+        "FamilyCare Premium", "SecureTerm Plus", "LifeShield Essential",
+        "AutoProtect Comprehensive", "FutureWealth Builder", "HomeSecure Essentials",
+        "TotalHome Protection Plan", "AcciGuard Secure", "LifeShield Critical Care"
+    ]
+    choose from these only and dont build any new policy and give them if they fulfill requirements or are near them 
 Response Format:
 "Based on your profile , I recommend **{{policy_name}}**.
 Key highlights:
@@ -220,7 +226,7 @@ Policy Selection Logic:
 
 **STATE: 'recommendation_given'**
 GOAL: Provide compelling details and move toward application. discuss with user recommend other options .
-
+        dont recommend any insurance if it is not in database dont create by yourself
 For Policy Details Request:
 "**[Policy Name]** offers exceptional value for your profile:
 
@@ -317,7 +323,7 @@ class ChatBot:
             self.memory = ConversationBufferMemory(
                 memory_key="chat_history",
                 return_messages=True,
-                # output_key="answer",  # ✅ Required
+                output_key="answer",  # ✅ Required
             )
 
             self.retriever = self.vectorstore.as_retriever()
@@ -422,7 +428,7 @@ class ChatBot:
             response = 'payment initiated. Redirecting to payment page...'
             return response
         elif UserInputProcessor.is_negative(query):
-            self.set_conversation_state(ConversationState.SHOWING_DETAILS)
+            self.set_conversation_state(ConversationState.RECOMMENDATION_GIVEN)
             response = 'No problem! Feel free to ask any questions about the policy.'
             self.add_user_plus_bot(query, response)
             logger.debug("User declined payment. Returning to SHOWING_DETAILS.")
@@ -458,7 +464,7 @@ class ChatBot:
     
     def _handle_recommendation_given(self, query: str) -> str:
         """Handle user input after a policy recommendation has been given."""
-        if query.strip().lower() == "yes":
+        if query.strip().lower() in UserInputProcessor.GENERIC_DETAIL_KEYWORDS or UserInputProcessor.YES_VARIANTS:
             self.set_conversation_state(ConversationState.SHOWING_DETAILS)
             return self._show_policy_details(query)
         else:
@@ -562,66 +568,81 @@ class ChatBot:
     
     def _generate_llm_response(self, query: str) -> str:
         try:
+            interested_policy_type = get_interested_policy_type(self.phone_number)
+            selected_policy = None
+            
+            # Enhance query using user interest
+            search_query = query
+            if interested_policy_type and "recommend" in query.lower():
+                search_query = f"{interested_policy_type} insurance policy recommendation {query}"
+            elif interested_policy_type:
+                search_query = f"{interested_policy_type} insurance {query}"
+            else:
+                # For users without interested policy type, still enhance general insurance queries
+                if "recommend" in query.lower() or "policy" in query.lower():
+                    search_query = f"insurance policy {query}"
+            
+            # Policy selection logic for recommendation queries
             if "recommend" in query.lower() and "policy" in query.lower():
-                interested_policy_type = get_interested_policy_type(self.phone_number)
-                search_query = query
-                if interested_policy_type and "recommend" in query.lower():
-                    search_query = f"{interested_policy_type} insurance policy recommendation {query}"
-                elif interested_policy_type:
-                    search_query = f"{interested_policy_type} insurance {query}"
-
-                # --- Deterministic policy selection ---
-                selected_policy = None
                 if interested_policy_type:
                     selected_policy = PolicyManager.get_policy_for_type(interested_policy_type)
-                # Fallback: try to extract from chat history
+                # For users without interested policy type, don't select a specific policy
+                # but still extract from history if available
                 if not selected_policy:
                     selected_policy = self._extract_last_policy_from_history()
-
-                retrieved_docs = self.vectorstore.similarity_search(
-                    search_query, k=self.config.similarity_search_k
-                )
-                retrieved_context = "\n---\n".join([doc.page_content for doc in retrieved_docs])
             
-                
-                chat_history_str = ""
-                for msg in self.memory.chat_memory.messages:
-                    if msg.type == "human":
-                        chat_history_str += f"User: {msg.content}\n"
-                    elif msg.type == "ai":
-                        chat_history_str += f"Bot: {msg.content}\n"
-                
-                merged_context = {
-                    **self.user_context,
-                    **self.user_info,
-                    "retrieved_context": retrieved_context,
-                    "chat_history": chat_history_str,
-                    "question": query,
-                    "conversation_state": self.get_conversation_state().value,
-                    "selected_policy": selected_policy or ""
-                }
-                # If selected_policy, inject it as interested_policy_type for prompt clarity
+            # Context Retrieval
+            retrieved_docs = self.vectorstore.similarity_search(
+                search_query, k=self.config.similarity_search_k
+            )
+            retrieved_context = "\n---\n".join([doc.page_content for doc in retrieved_docs])
+            
+            # Chat History Conversion
+            chat_history_str = ""
+            for msg in self.memory.chat_memory.messages:
+                if msg.type == "human":
+                    chat_history_str += f"User: {msg.content}\n"
+                elif msg.type == "ai":
+                    chat_history_str += f"Bot: {msg.content}\n"
+            
+            # Merge into prompt context
+            merged_context = {
+                **self.user_context,
+                **self.user_info,
+                "retrieved_context": retrieved_context,
+                "chat_history": chat_history_str,
+                "question": query,
+                "conversation_state": self.get_conversation_state().value,
+            }
+            
+            # Add policy information regardless of interested_policy_type
+            if interested_policy_type:
+                merged_context["interested_policy_type"] = interested_policy_type
                 if selected_policy:
-                    merged_context["interested_policy_type"] = interested_policy_type
                     merged_context["policy_name"] = selected_policy
-                    full_prompt = Template(CustomPromptTemplate.RAW_TEMPLATE).render(merged_context)
-                    response = self.llm.invoke(full_prompt)
-                    self.add_user_plus_bot(query, response.content)
-                    # --- Set selected_plan as soon as a valid policy is mentioned in the AI response ---
-                    last_policy = self._extract_last_policy_from_history()
-                    if last_policy:
-                        logger.info(f"[LLM Response] Phone: {self.phone_number}, Extracted Policy: {last_policy}")
-                        result = set_selected_plan(self.phone_number, last_policy)
-                        logger.info(f"set_selected_plan result: {result}")
-                    return response.content
-
-            # --- NORMAL MODE (simple flow like Code 2) ---
-            response = self.chain.invoke({"question": query})
-            bot_message = response.get("answer", "")
-            self.add_user_plus_bot(query, bot_message)
-            self._save_context()
-            return bot_message
-
+                    merged_context["selected_policy"] = selected_policy
+            else:
+                # For users without interested policy type, still provide general policy context
+                # but without a selected policy
+                merged_context["interested_policy_type"] = None
+                if selected_policy:  # Only if extracted from history
+                    merged_context["policy_name"] = selected_policy
+                    merged_context["selected_policy"] = selected_policy
+            
+            # Prompt Rendering + LLM Call
+            full_prompt = Template(CustomPromptTemplate.RAW_TEMPLATE).render(merged_context)
+            response = self.llm.invoke(full_prompt)
+            self.add_user_plus_bot(query, response.content)
+            
+            # Track selected policy, if detected
+            last_policy = self._extract_last_policy_from_history()
+            if last_policy:
+                logger.info(f"[LLM Response] Phone: {self.phone_number}, Extracted Policy: {last_policy}")
+                result = set_selected_plan(self.phone_number, last_policy)
+                logger.info(f"set_selected_plan result: {result}")
+            
+            return response.content
+            
         except Exception as e:
             logger.error(f"Error generating LLM response: {e}")
             return "Sorry, something went wrong while processing your request."
